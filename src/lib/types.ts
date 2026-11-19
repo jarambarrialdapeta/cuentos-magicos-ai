@@ -4,6 +4,8 @@ export type BookFormat = "micro" | "mini" | "aventura";
 
 export type StoryLanguage = "eu" | "es" | "en" | "fr";
 
+export type ImageAspectRatio = "3:4" | "1:1" | "4:3";
+
 export type IllustrationStyleId =
   | "watercolor"
   | "3d"
@@ -44,6 +46,7 @@ export interface Story {
   title: string;
   dedication: string;
   language?: StoryLanguage;
+  aspectRatio?: ImageAspectRatio;
   contentType: ContentType;
   bookFormat: BookFormat;
   styleId: IllustrationStyleId;

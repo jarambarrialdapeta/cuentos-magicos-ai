@@ -11,6 +11,7 @@ import {
   CharacterInput,
   ContentType,
   IllustrationStyleId,
+  ImageAspectRatio,
   Story,
   StoryLanguage,
 } from "@/lib/types";
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
       dedication?: string;
       coverScenePrompt?: string;
       language?: StoryLanguage;
+      aspectRatio?: ImageAspectRatio;
       contentType: ContentType;
       bookFormat: BookFormat;
       styleId: IllustrationStyleId;
@@ -153,6 +155,7 @@ export async function POST(req: NextRequest) {
       dedication: finalDedication,
       coverScenePrompt: body.coverScenePrompt?.trim() || undefined,
       language,
+      aspectRatio: body.aspectRatio || "1:1",
       contentType: body.contentType || "narrativo",
       bookFormat: body.bookFormat || "mini",
       styleId,

@@ -7,6 +7,7 @@ import {
   CharacterInput,
   ContentType,
   IllustrationStyleId,
+  ImageAspectRatio,
   StoryLanguage,
   StoryPage,
 } from "./types";
@@ -57,6 +58,7 @@ async function callGeminiImage(params: {
   apiKey: string;
   prompt: string;
   referenceImages?: string[];
+  aspectRatio?: ImageAspectRatio;
 }): Promise<{ imageUrl: string | null; error?: string }> {
   const parts: Array<
     | { text: string }
@@ -77,6 +79,13 @@ async function callGeminiImage(params: {
 
   parts.push({ text: params.prompt });
 
+  const generationConfig: Record<string, unknown> = {
+    responseModalities: ["IMAGE", "TEXT"],
+  };
+  if (params.aspectRatio) {
+    generationConfig.imageConfig = { aspectRatio: params.aspectRatio };
+  }
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${params.apiKey}`,
@@ -86,9 +95,7 @@ async function callGeminiImage(params: {
         signal: AbortSignal.timeout(28000),
         body: JSON.stringify({
           contents: [{ parts }],
-          generationConfig: {
-            responseModalities: ["IMAGE", "TEXT"],
-          },
+          generationConfig,
         }),
       }
     );
@@ -142,6 +149,7 @@ async function callFalImage(params: {
   falKey: string;
   prompt: string;
   referenceImages?: string[];
+  aspectRatio?: ImageAspectRatio;
 }): Promise<{ imageUrl: string | null; error?: string }> {
   try {
     const validRefs = (params.referenceImages || [])
@@ -155,10 +163,11 @@ async function callFalImage(params: {
         ? "https://fal.run/fal-ai/nano-banana-2/edit"
         : "https://fal.run/fal-ai/nano-banana-2";
 
+    const aspectField = params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {};
     const payload =
       validRefs.length > 0
-        ? { prompt: params.prompt, image_urls: validRefs }
-        : { prompt: params.prompt };
+        ? { prompt: params.prompt, image_urls: validRefs, ...aspectField }
+        : { prompt: params.prompt, ...aspectField };
 
     const res = await fetch(endpoint, {
       method: "POST",
@@ -389,10 +398,18 @@ export async function generateSingleSceneImage(params: {
   styleId: IllustrationStyleId;
   characters: CharacterInput[];
   styleAnchorImage?: string;
+  aspectRatio?: ImageAspectRatio;
   fallbackIndex?: number;
 }): Promise<{ imageUrl: string; mode: "ai" | "demo"; warning?: string }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const { geminiKey, falKey } = getEffectiveApiKeys();
+  const ratio = params.aspectRatio || "1:1";
+  const framingNote =
+    ratio === "3:4"
+      ? "Vertical portrait 3:4 storybook page composition."
+      : ratio === "4:3"
+        ? "Horizontal landscape 4:3 storybook spread composition."
+        : "Square 1:1 picture book composition.";
 
   // Recoger únicamente fotos reales y retratos IA de los personajes (NUNCA imágenes de estilo de ejemplo)
   const refImages: string[] = [];
@@ -459,8 +476,8 @@ export async function generateSingleSceneImage(params: {
 
   const prompt =
     refImages.length > 0
-      ? `${refLabels.join(" ")} Characters in scene: ${charDetails}. ${consistencyRules} Scene to illustrate: ${params.scenePrompt}. Art style: ${style.promptModifier}`
-      : `Children's storybook illustration with characters (${charDetails}). ${consistencyRules} Scene: ${params.scenePrompt}. Art style: ${style.promptModifier}`;
+      ? `${refLabels.join(" ")} Characters in scene: ${charDetails}. ${consistencyRules} ${framingNote} Scene to illustrate: ${params.scenePrompt}. Art style: ${style.promptModifier}`
+      : `Children's storybook illustration with characters (${charDetails}). ${consistencyRules} ${framingNote} Scene: ${params.scenePrompt}. Art style: ${style.promptModifier}`;
 
   let lastWarning: string | undefined;
 
@@ -469,6 +486,7 @@ export async function generateSingleSceneImage(params: {
       apiKey: geminiKey,
       prompt,
       referenceImages: refImages,
+      aspectRatio: ratio,
     });
 
     if (imageUrl) {
@@ -482,6 +500,7 @@ export async function generateSingleSceneImage(params: {
       falKey,
       prompt,
       referenceImages: refImages,
+      aspectRatio: ratio,
     });
     if (imageUrl) {
       return { imageUrl, mode: "ai" };

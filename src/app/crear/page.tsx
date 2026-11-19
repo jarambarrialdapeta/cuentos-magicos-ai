@@ -28,6 +28,7 @@ import {
   CharacterProfile,
   ContentType,
   IllustrationStyleId,
+  ImageAspectRatio,
   StoryLanguage,
 } from "@/lib/types";
 
@@ -61,6 +62,7 @@ export default function CrearCuentoPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   const [language, setLanguage] = useState<StoryLanguage>("eu");
+  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>("3:4");
   const [contentType, setContentType] = useState<ContentType>("narrativo");
   const [bookFormat, setBookFormat] = useState<BookFormat>("mini");
   const [pageCount, setPageCount] = useState<number>(8);
@@ -492,6 +494,7 @@ export default function CrearCuentoPage() {
           dedication: resolvedDedication || undefined,
           coverScenePrompt: resolvedCoverPrompt || undefined,
           language,
+          aspectRatio,
           contentType,
           bookFormat,
           styleId,
@@ -779,6 +782,43 @@ export default function CrearCuentoPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <h3 style={{ fontSize: "1.15rem", marginTop: 18 }}>
+              Irudien formatua (orientazioa)
+            </h3>
+            <div className="option-grid">
+              {[
+                {
+                  id: "3:4" as ImageAspectRatio,
+                  title: "Bertikala (3:4)",
+                  tag: "Liburu bertikala",
+                  desc: "Orrialde bertikal klasikoa, PDF bertikalean ere primeran geratzeko.",
+                },
+                {
+                  id: "1:1" as ImageAspectRatio,
+                  title: "Karratua (1:1)",
+                  tag: "Albuma",
+                  desc: "Album ilustratu karratua, liburu irekiaren maketaziorako aproposa.",
+                },
+                {
+                  id: "4:3" as ImageAspectRatio,
+                  title: "Etzana (4:3)",
+                  tag: "Panoramikoa",
+                  desc: "Ikuspegi zabalagoa paisaia eta eszena handietarako.",
+                },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`option-card ${aspectRatio === opt.id ? "selected" : ""}`}
+                  onClick={() => setAspectRatio(opt.id)}
+                >
+                  <span className="tag">{opt.tag}</span>
+                  <h4 style={{ fontSize: "1.15rem", marginBottom: 6 }}>{opt.title}</h4>
+                  <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>{opt.desc}</p>
+                </button>
+              ))}
             </div>
 
             <h3 style={{ fontSize: "1.15rem", marginTop: 18 }}>Zein ipuin mota sortu nahi duzu?</h3>

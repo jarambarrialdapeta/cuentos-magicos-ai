@@ -65,6 +65,7 @@ export async function PATCH(
       styleId: story.styleId,
       characters: story.characters,
       styleAnchorImage: firstAnchor,
+      aspectRatio: story.aspectRatio,
     });
     if (regen.mode === "ai") {
       story.coverImageUrl = regen.imageUrl;
@@ -91,6 +92,7 @@ export async function PATCH(
           styleId: story.styleId,
           characters: story.characters,
           styleAnchorImage: anchor,
+          aspectRatio: story.aspectRatio,
           fallbackIndex: targetPage.pageNumber,
         });
         targetPage.imageUrl = regen.imageUrl;

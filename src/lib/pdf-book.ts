@@ -60,7 +60,6 @@ function drawFittedImage(
   const drawY = boxY + (boxH - drawH) / 2;
 
   if (withFrame) {
-    // Sombra suave
     doc.setFillColor(232, 222, 206);
     doc.roundedRect(drawX + 1.5, drawY + 1.5, drawW, drawH, 2.5, 2.5, "F");
   }
@@ -96,38 +95,47 @@ export async function downloadStoryBookPdf(
   story: Story,
   coverImageUrl: string
 ): Promise<void> {
+  const isPortrait = story.aspectRatio === "3:4";
   const doc = new jsPDF({
-    orientation: "landscape",
+    orientation: isPortrait ? "portrait" : "landscape",
     unit: "mm",
     format: "a4",
   });
 
-  const W = 297;
-  const H = 210;
+  const W = isPortrait ? 210 : 297;
+  const H = isPortrait ? 297 : 210;
 
   // 1. AZALA (Portada)
   drawPageFrame(doc, W, H);
 
   const coverImg = await loadImagePreserveRatio(coverImageUrl);
   if (coverImg) {
-    drawFittedImage(doc, coverImg, 36, 17, W - 72, 124, true);
+    if (isPortrait) {
+      drawFittedImage(doc, coverImg, 22, 22, W - 44, 178, true);
+    } else {
+      drawFittedImage(doc, coverImg, 36, 17, W - 72, 124, true);
+    }
   }
 
   doc.setFont("times", "bold");
   doc.setTextColor(42, 33, 24);
-  doc.setFontSize(24);
-  const titleLines = doc.splitTextToSize(story.title, W - 56) as string[];
-  doc.text(titleLines, W / 2, 156, { align: "center", lineHeightFactor: 1.2 });
+  doc.setFontSize(isPortrait ? 25 : 24);
+  const titleLines = doc.splitTextToSize(story.title, W - 46) as string[];
+  doc.text(titleLines, W / 2, isPortrait ? 222 : 156, {
+    align: "center",
+    lineHeightFactor: 1.2,
+  });
 
   doc.setDrawColor(212, 163, 89);
   doc.setLineWidth(0.5);
-  doc.line(W / 2 - 28, 176, W / 2 + 28, 176);
+  const dividerY = isPortrait ? 246 : 176;
+  doc.line(W / 2 - 28, dividerY, W / 2 + 28, dividerY);
 
   doc.setFont("times", "italic");
   doc.setFontSize(12);
   doc.setTextColor(120, 102, 84);
   const charsLabel = story.characters.map((c) => c.name).join("  ·  ");
-  doc.text(charsLabel, W / 2, 185, { align: "center" });
+  doc.text(charsLabel, W / 2, isPortrait ? 256 : 185, { align: "center" });
 
   // 2. ESKAINTZA (Dedicatoria)
   doc.addPage();
@@ -136,7 +144,7 @@ export async function downloadStoryBookPdf(
   doc.setFont("times", "italic");
   doc.setFontSize(19);
   doc.setTextColor(65, 52, 40);
-  const dedLines = doc.splitTextToSize(`“${story.dedication}”`, W - 96) as string[];
+  const dedLines = doc.splitTextToSize(`“${story.dedication}”`, W - 64) as string[];
   const dedStartY = H / 2 - (dedLines.length * 8) / 2;
   doc.text(dedLines, W / 2, dedStartY, { align: "center", lineHeightFactor: 1.4 });
 
@@ -150,26 +158,80 @@ export async function downloadStoryBookPdf(
     dedStartY + dedLines.length * 8 + 8
   );
 
-  // 3. ORRIALDEAK — 4 maquetazio desberdin txandakatuta (irudia inoiz moztu gabe)
+  // 3. ORRIALDEAK
   for (let i = 0; i < story.pages.length; i++) {
     const page = story.pages[i];
     doc.addPage();
     drawPageFrame(doc, W, H);
 
     const pageImg = await loadImagePreserveRatio(page.imageUrl || coverImageUrl);
-    const variant = i % 4;
-
     const fontSize = page.text.length > 220 ? 13.5 : page.text.length > 130 ? 15.5 : 17.5;
     doc.setFont("times", "normal");
     doc.setFontSize(fontSize);
     doc.setTextColor(38, 30, 22);
 
+    if (isPortrait) {
+      // 3 maketazio bertikal desberdin (inoiz moztu gabe)
+      const pVar = i % 3;
+      if (pVar === 0) {
+        // P-A: Ilustrazio bertikal handia goian + testu-txartel beroa behean
+        if (pageImg) {
+          drawFittedImage(doc, pageImg, 20, 18, W - 40, 186, true);
+        }
+        doc.setFillColor(244, 236, 222);
+        doc.setDrawColor(218, 178, 114);
+        doc.setLineWidth(0.45);
+        doc.roundedRect(20, 212, W - 40, 58, 3, 3, "FD");
+
+        const lines = doc.splitTextToSize(page.text, W - 56) as string[];
+        const lineH = fontSize * 0.48;
+        const startY = 241 - (lines.length * lineH) / 2 + 2;
+        doc.text(lines, W / 2, startY, { align: "center", lineHeightFactor: 1.4 });
+        drawPageNumber(doc, page.pageNumber, W / 2, H - 15);
+      } else if (pVar === 1) {
+        // P-B: Testua goian urrezko marrarekin + ilustrazio handia behean
+        const lines = doc.splitTextToSize(page.text, W - 52) as string[];
+        const lineH = fontSize * 0.48;
+        const blockH = lines.length * lineH;
+        const startY = 44 - blockH / 2;
+        doc.text(lines, W / 2, Math.max(24, startY), {
+          align: "center",
+          lineHeightFactor: 1.4,
+        });
+
+        doc.setDrawColor(212, 163, 89);
+        doc.setLineWidth(0.5);
+        doc.line(W / 2 - 26, 74, W / 2 + 26, 74);
+
+        if (pageImg) {
+          drawFittedImage(doc, pageImg, 20, 82, W - 40, 188, true);
+        }
+        drawPageNumber(doc, page.pageNumber, W / 2, H - 15);
+      } else {
+        // P-C: Ilustrazio bertikal erraldoia + pergamino-kaxa behean
+        if (pageImg) {
+          drawFittedImage(doc, pageImg, 16, 16, W - 32, 226, true);
+        }
+        doc.setFillColor(251, 246, 236);
+        doc.setDrawColor(208, 158, 84);
+        doc.setLineWidth(0.6);
+        const lines = doc.splitTextToSize(page.text, W - 56) as string[];
+        const lineH = fontSize * 0.48;
+        const boxH = Math.max(40, lines.length * lineH + 18);
+        const boxY = H - boxH - 22;
+        doc.roundedRect(20, boxY, W - 40, boxH, 3, 3, "FD");
+        doc.text(lines, W / 2, boxY + 12, { align: "center", lineHeightFactor: 1.38 });
+        drawPageNumber(doc, page.pageNumber, W / 2, H - 13);
+      }
+      continue;
+    }
+
+    // Etzana (A4 landscape): 4 maketazio txandakatuta
+    const variant = i % 4;
     if (variant === 0) {
-      // A: Panoramikoa — Ilustrazio handia goian + testu-txartel beroa behean
       if (pageImg) {
         drawFittedImage(doc, pageImg, 22, 16, W - 44, 126, true);
       }
-
       doc.setFillColor(244, 236, 222);
       doc.setDrawColor(218, 178, 114);
       doc.setLineWidth(0.45);
@@ -181,7 +243,6 @@ export async function downloadStoryBookPdf(
       doc.text(lines, W / 2, startY, { align: "center", lineHeightFactor: 1.38 });
       drawPageNumber(doc, page.pageNumber, W / 2, 196);
     } else if (variant === 1) {
-      // B: Liburu irekia — Ilustrazioa ezkerrean + testua eskuinean
       doc.setDrawColor(228, 218, 204);
       doc.setLineWidth(0.5);
       doc.line(W / 2, 14, W / 2, H - 14);
@@ -202,7 +263,6 @@ export async function downloadStoryBookPdf(
       doc.text(lines, rightCenterX, startY, { align: "center", lineHeightFactor: 1.45 });
       drawPageNumber(doc, page.pageNumber, rightCenterX, H - 16);
     } else if (variant === 2) {
-      // C: Alderantzizko liburu irekia — Testua ezkerrean + ilustrazioa eskuinean
       doc.setDrawColor(228, 218, 204);
       doc.setLineWidth(0.5);
       doc.line(W / 2, 14, W / 2, H - 14);
@@ -223,7 +283,6 @@ export async function downloadStoryBookPdf(
         drawFittedImage(doc, pageImg, W / 2 + 8, 20, W / 2 - 24, H - 40, true);
       }
     } else {
-      // D: Album artistikoa — Ilustrazio handia eskuinera/gora lerratuta + pergamino-kaxa behe-ezkerrean
       if (pageImg) {
         drawFittedImage(doc, pageImg, 78, 16, W - 96, H - 42, true);
       }
