@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Download,
   Edit3,
   Loader2,
   Printer,
@@ -14,6 +15,7 @@ import {
   Volume2,
   Wand2,
 } from "lucide-react";
+import { downloadStoryBookPdf } from "@/lib/pdf-book";
 import { Story } from "@/lib/types";
 
 const SPEECH_LANG: Record<string, string> = {
@@ -33,6 +35,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
   const [draftScenePrompt, setDraftScenePrompt] = useState("");
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(
     initialStory.aiWarning || null
   );
@@ -221,10 +224,27 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
           <button
             type="button"
             className="btn btn-forest btn-sm"
+            disabled={downloadingPdf}
+            onClick={async () => {
+              setDownloadingPdf(true);
+              try {
+                await downloadStoryBookPdf(story, coverImage);
+              } finally {
+                setDownloadingPdf(false);
+              }
+            }}
+          >
+            {downloadingPdf ? <Loader2 size={15} /> : <Download size={15} />}
+            {downloadingPdf ? "PDF sortzen..." : "PDF Liburua Deskargatu"}
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
             onClick={() => window.print()}
           >
             <Printer size={15} />
-            Inprimatu / PDF
+            Inprimatu
           </button>
         </div>
       </div>
