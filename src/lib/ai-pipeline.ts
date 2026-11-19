@@ -38,7 +38,7 @@ async function callGeminiImage(params: {
   parts.push({ text: params.prompt });
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${params.apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${params.apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +103,7 @@ export async function generateBaseCharacter(params: {
         return {
           illustrationUrl: img,
           mode: "ai",
-          providerInfo: "Gemini (gemini-2.5-flash-image)",
+          providerInfo: "Gemini (gemini-nano-banana-2.1)",
         };
       }
     } catch (err) {
@@ -191,7 +191,7 @@ Devuelve JSON válido con esta estructura exacta:
 En scenePrompt describe la escena visual en inglés manteniendo exactamente la misma apariencia y vestuario de los personajes.`;
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
