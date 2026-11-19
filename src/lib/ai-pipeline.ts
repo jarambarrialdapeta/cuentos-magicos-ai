@@ -82,6 +82,7 @@ async function callGeminiImage(params: {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(25000),
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
@@ -228,6 +229,7 @@ Reglas estrictas:
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(25000),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {

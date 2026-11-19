@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       characters: CharacterInput[];
       idea?: string;
       requestedPages?: number;
+      skipImages?: boolean;
       customPages?: { pageNumber: number; text: string; scenePrompt: string; imageUrl?: string }[];
     };
 
@@ -112,11 +113,27 @@ export async function POST(req: NextRequest) {
       if (script.warning) warnings.push(script.warning);
     }
 
-    const pagesResult = await generateConsistentStoryPages({
-      pages: scriptPages,
-      styleId,
-      characters: updatedCharacters,
-    });
+    const fallbackThumb =
+      updatedCharacters[0]?.photoDataUrl ||
+      updatedCharacters[0]?.baseIllustrationUrl ||
+      "/images/char-base.jpg";
+
+    const pagesResult = body.skipImages
+      ? {
+          pages: scriptPages.map((p) => ({
+            pageNumber: p.pageNumber,
+            text: p.text,
+            scenePrompt: p.scenePrompt,
+            imageUrl: p.imageUrl || fallbackThumb,
+          })),
+          mode: "demo" as const,
+          warning: undefined,
+        }
+      : await generateConsistentStoryPages({
+          pages: scriptPages,
+          styleId,
+          characters: updatedCharacters,
+        });
     if (pagesResult.warning) warnings.push(pagesResult.warning);
 
     const id = `cuento-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;

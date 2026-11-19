@@ -63,6 +63,7 @@ export default function CrearCuentoPage() {
   ]);
 
   const [generatingStory, setGeneratingStory] = useState(false);
+  const [progressStatus, setProgressStatus] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -179,6 +180,7 @@ export default function CrearCuentoPage() {
     }
 
     setGeneratingStory(true);
+    setProgressStatus("Preparando el guion y los personajes...");
     try {
       const res = await fetch("/api/stories", {
         method: "POST",
@@ -191,6 +193,7 @@ export default function CrearCuentoPage() {
           bookFormat,
           styleId,
           characters: selectedCharacters,
+          skipImages: true,
           idea: scriptMode === "idea" ? idea.trim() : undefined,
           customPages:
             scriptMode === "custom"
@@ -204,12 +207,40 @@ export default function CrearCuentoPage() {
               : undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error creando el cuento");
-      router.push(`/cuento/${data.story.id}`);
+      const data = (await res.json()) as {
+        story?: { id: string; pages: { pageNumber: number }[] };
+        error?: string;
+      };
+      if (!res.ok || !data.story) throw new Error(data.error || "Error creando el cuento");
+
+      const storyId = data.story.id;
+      const totalPages = data.story.pages.length;
+
+      for (let i = 0; i < totalPages; i++) {
+        const pageNum = data.story.pages[i].pageNumber;
+        setProgressStatus(`Ilustrando página ${i + 1} de ${totalPages}...`);
+        const patchRes = await fetch(`/api/stories/${storyId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageNumber: pageNum,
+            regenerateImage: true,
+          }),
+        });
+        if (patchRes.ok) {
+          const patchData = (await patchRes.json()) as { warning?: string };
+          if (patchData.warning && patchData.warning.includes("límite 0")) {
+            break;
+          }
+        }
+      }
+
+      setProgressStatus("¡Cuento listo! Abriendo libro...");
+      router.push(`/cuento/${storyId}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "No se pudo crear el cuento");
       setGeneratingStory(false);
+      setProgressStatus("");
     }
   };
 
@@ -656,7 +687,7 @@ export default function CrearCuentoPage() {
               onClick={handleCreateStory}
             >
               {generatingStory ? <Loader2 size={18} /> : <Sparkles size={18} />}
-              {generatingStory ? "Creando cuento..." : "Crear cuento"}
+              {generatingStory ? progressStatus || "Creando cuento..." : "Crear cuento"}
             </button>
           )}
         </div>
