@@ -119,8 +119,8 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
       {story.mode === "demo" && (
         <div className="notice-banner no-print">
           <strong>Modo Demo activo:</strong> Este cuento usa ilustraciones de demostración.
-          Para generar imágenes reales de tu foto y guiones personalizados con IA, añade{" "}
-          <code>FAL_KEY</code> y <code>OPENAI_API_KEY</code> en <code>.env.local</code>.
+          Para generar imágenes reales de tu foto y guiones personalizados con IA, añade tu{" "}
+          <code>GEMINI_API_KEY</code> en <code>.env.local</code>.
         </div>
       )}
 

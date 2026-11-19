@@ -7,10 +7,75 @@ interface GenerateCharacterResult {
   providerInfo: string;
 }
 
+function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) return null;
+  return { mimeType: match[1], data: match[2] };
+}
+
+async function callGeminiImage(params: {
+  apiKey: string;
+  prompt: string;
+  referenceImageDataUrl?: string;
+}): Promise<string | null> {
+  const parts: Array<
+    | { text: string }
+    | { inlineData: { mimeType: string; data: string } }
+  > = [];
+
+  if (params.referenceImageDataUrl) {
+    const parsed = parseDataUrl(params.referenceImageDataUrl);
+    if (parsed) {
+      parts.push({
+        inlineData: {
+          mimeType: parsed.mimeType,
+          data: parsed.data,
+        },
+      });
+    }
+  }
+
+  parts.push({ text: params.prompt });
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${params.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"],
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    console.error("Gemini image error:", res.status, await res.text());
+    return null;
+  }
+
+  const json = (await res.json()) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          inlineData?: { mimeType?: string; data?: string };
+        }>;
+      };
+    }>;
+  };
+
+  const imagePart = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+  if (!imagePart?.inlineData?.data) return null;
+  const mime = imagePart.inlineData.mimeType || "image/png";
+  return `data:${mime};base64,${imagePart.inlineData.data}`;
+}
+
 /**
  * Paso 1 del pipeline de consistencia:
  * Convierte la foto real del usuario en un retrato ilustrado base (Character Sheet)
- * usando fal-ai/flux-pulid si FAL_KEY está configurada, o el retrato demo si no.
+ * Prioridad: GEMINI_API_KEY (gemini-2.5-flash-image) -> FAL_KEY (flux-pulid) -> Demo.
  */
 export async function generateBaseCharacter(params: {
   name: string;
@@ -19,7 +84,32 @@ export async function generateBaseCharacter(params: {
   photoDataUrl?: string;
 }): Promise<GenerateCharacterResult> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
+  const geminiKey = process.env.GEMINI_API_KEY;
   const falKey = process.env.FAL_KEY;
+
+  if (geminiKey) {
+    try {
+      const prompt = params.photoDataUrl
+        ? `Transform the person in this reference photo into a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}). Keep their exact facial features, hair and likeness, centered upper body, warm friendly expression, ${style.promptModifier}.`
+        : `Create a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}), centered upper body, warm friendly expression, ${style.promptModifier}.`;
+
+      const img = await callGeminiImage({
+        apiKey: geminiKey,
+        prompt,
+        referenceImageDataUrl: params.photoDataUrl,
+      });
+
+      if (img) {
+        return {
+          illustrationUrl: img,
+          mode: "ai",
+          providerInfo: "Gemini (gemini-2.5-flash-image)",
+        };
+      }
+    } catch (err) {
+      console.error("Error calling Gemini image for character, trying fallback:", err);
+    }
+  }
 
   if (falKey && params.photoDataUrl) {
     try {
@@ -58,13 +148,13 @@ export async function generateBaseCharacter(params: {
   return {
     illustrationUrl: style.previewImage || "/images/char-base.jpg",
     mode: "demo",
-    providerInfo: "Modo Demo (añade FAL_KEY en .env.local para usar fal-ai/flux-pulid)",
+    providerInfo: "Modo Demo (añade GEMINI_API_KEY en .env.local para generación real)",
   };
 }
 
 /**
- * Paso 2: Genera el guion página por página (con OpenAI si OPENAI_API_KEY está configurada,
- * o con un generador narrativo personalizado en Modo Demo).
+ * Paso 2: Genera el guion página por página.
+ * Prioridad: GEMINI_API_KEY (gemini-2.5-flash) -> OPENAI_API_KEY -> Demo.
  */
 export async function generateStoryScript(params: {
   contentType: ContentType;
@@ -82,14 +172,59 @@ export async function generateStoryScript(params: {
   const format = BOOK_FORMATS.find((f) => f.id === params.bookFormat) ?? BOOK_FORMATS[1];
   const mainChar = params.characters[0];
   const companion = params.characters[1];
+  const geminiKey = process.env.GEMINI_API_KEY;
   const openAiKey = process.env.OPENAI_API_KEY;
+
+  const charDesc = params.characters
+    .map((c) => `${c.name} (${c.role}${c.ageOrNote ? `, ${c.ageOrNote}` : ""})`)
+    .join("; ");
+
+  if (geminiKey) {
+    try {
+      const prompt = `Eres un escritor galardonado de literatura ilustrada. Escribe un cuento en español de exactamente ${format.defaultPages} páginas para formato "${format.title}" (${format.ageRange}) y categoría "${params.contentType}".
+Personajes: ${charDesc}.
+Idea de la historia: ${params.idea}.
+Dedicatoria sugerida: ${params.dedication || `Para ${mainChar.name}`}.
+
+Devuelve JSON válido con esta estructura exacta:
+{"title": string, "dedication": string, "pages": [{"pageNumber": number, "text": string, "scenePrompt": string}]}
+En scenePrompt describe la escena visual en inglés manteniendo exactamente la misma apariencia y vestuario de los personajes.`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
+
+      if (res.ok) {
+        const json = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) {
+          const parsed = JSON.parse(rawText) as {
+            title: string;
+            dedication: string;
+            pages: { pageNumber: number; text: string; scenePrompt: string }[];
+          };
+          return { ...parsed, mode: "ai" };
+        }
+      }
+    } catch (err) {
+      console.error("Gemini script error, trying fallback:", err);
+    }
+  }
 
   if (openAiKey) {
     try {
-      const charDesc = params.characters
-        .map((c) => `${c.name} (${c.role}${c.ageOrNote ? `, ${c.ageOrNote}` : ""})`)
-        .join("; ");
-
       const systemPrompt = `Eres un escritor galardonado de literatura ilustrada. Escribe un cuento en español de exactamente ${format.defaultPages} páginas para formato "${format.title}" (${format.ageRange}) y categoría "${params.contentType}". Responde SOLO con JSON válido con la estructura: {"title": string, "dedication": string, "pages": [{"pageNumber": number, "text": string, "scenePrompt": string}]}. En scenePrompt describe la escena visual en inglés manteniendo exactamente la misma apariencia y vestuario de los personajes.`;
 
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -171,7 +306,8 @@ export async function generateStoryScript(params: {
 
 /**
  * Paso 3: Genera la ilustración de cada página usando la ilustración base del personaje
- * como referencia en fal-ai/flux-pro/kontext para mantener consistencia facial y de estilo.
+ * como referencia fija para mantener consistencia facial y de estilo.
+ * Prioridad: GEMINI_API_KEY (gemini-2.5-flash-image) -> FAL_KEY (flux-pro/kontext) -> Demo.
  */
 export async function generateConsistentStoryPages(params: {
   pages: { pageNumber: number; text: string; scenePrompt: string }[];
@@ -179,6 +315,7 @@ export async function generateConsistentStoryPages(params: {
   baseCharacterUrl?: string;
 }): Promise<{ pages: StoryPage[]; mode: "ai" | "demo" }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
+  const geminiKey = process.env.GEMINI_API_KEY;
   const falKey = process.env.FAL_KEY;
   const demoImages = [
     params.baseCharacterUrl || "/images/char-base.jpg",
@@ -187,6 +324,39 @@ export async function generateConsistentStoryPages(params: {
     "/images/style-classic.jpg",
     "/images/hero-storybook.jpg",
   ];
+
+  if (geminiKey) {
+    const results: StoryPage[] = [];
+    let usedAi = false;
+
+    for (let i = 0; i < params.pages.length; i++) {
+      const p = params.pages[i];
+      let imageUrl = demoImages[i % demoImages.length];
+
+      try {
+        const prompt = params.baseCharacterUrl?.startsWith("data:")
+          ? `Keep the exact same character appearance, face, hair, and clothing from the reference character portrait. Place them in this storybook scene: ${p.scenePrompt}. Style: ${style.promptModifier}`
+          : `Storybook illustration scene: ${p.scenePrompt}. Style: ${style.promptModifier}`;
+
+        const generated = await callGeminiImage({
+          apiKey: geminiKey,
+          prompt,
+          referenceImageDataUrl: params.baseCharacterUrl,
+        });
+
+        if (generated) {
+          imageUrl = generated;
+          usedAi = true;
+        }
+      } catch (err) {
+        console.error(`Error generating Gemini page ${p.pageNumber}:`, err);
+      }
+
+      results.push({ ...p, imageUrl });
+    }
+
+    return { pages: results, mode: usedAi ? "ai" : "demo" };
+  }
 
   if (falKey && params.baseCharacterUrl && params.baseCharacterUrl.startsWith("http")) {
     const results: StoryPage[] = [];
