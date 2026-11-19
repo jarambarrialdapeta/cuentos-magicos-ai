@@ -7,6 +7,93 @@ const STORIES_FILE = path.join(DATA_DIR, "stories.json");
 
 const SEED_STORIES: Story[] = [
   {
+    id: "ejemplo-lukas-olentzero",
+    title: "Lukas eta Olentzeroren Gurdi Magikoa",
+    dedication: "Euskal Herriko ume guztientzat, gabon magiko eta alai bat opa dizuegu.",
+    contentType: "narrativo",
+    bookFormat: "mini",
+    styleId: "classic",
+    mode: "ai",
+    createdAt: "2026-11-19T08:00:00.000Z",
+    characters: [
+      {
+        id: "char-lukas",
+        name: "Lukas",
+        role: "Basozain gaztea",
+        ageOrNote: "Jantzi berdeak, txapela eta motxila",
+        baseIllustrationUrl: "/images/lukas-olentzero/azala.jpg",
+      },
+      {
+        id: "char-olentzero",
+        name: "Olentzero",
+        role: "Baserritar bizarduna",
+        ageOrNote: "Bizar zuri handia, txapela eta zapi gorria",
+      },
+      {
+        id: "char-astotxoa",
+        name: "Astotxoa",
+        role: "Asto magikoa",
+        ageOrNote: "Astotxo gris txikia eta lagunkoia",
+      },
+    ],
+    pages: [
+      {
+        pageNumber: 1,
+        text: "Hau Lukas da! Basozain gazte eta oso alai bat. Baserri polit batean bizi da, basotik gertu. «Kaixo, Lukas!»",
+        scenePrompt: "Lukas basozain alaia basoaren ondoan agurtzen.",
+        imageUrl: "/images/lukas-olentzero/p1.jpg",
+      },
+      {
+        pageNumber: 2,
+        text: "Ondoan, Olentzero bizi da. «Lukas, lagundu, mesedez! Opari asko ditut, baina ez dut gurdiarik!»",
+        scenePrompt: "Olentzero baserriko atean Lukasi deika opari piloarekin.",
+        imageUrl: "/images/lukas-olentzero/p2.jpg",
+      },
+      {
+        pageNumber: 3,
+        text: "Lukas lanean hasi da! Ttak, ttak, ttak! aizkorarekin. Zirri-zarra, zirri-zarra! zerrarekin enborrak mozten.",
+        scenePrompt: "Lukas aizkora eta zerrarekin lanean Olentzero animatzen duelarik.",
+        imageUrl: "/images/lukas-olentzero/p3.jpg",
+      },
+      {
+        pageNumber: 4,
+        text: "Gurdia prest dago! Baina nork eramango du? Saia gaitezen euli txiki batekin! Bzzz... Ezinezkoa da, ezin du! Oso-oso txikia da!",
+        scenePrompt: "Euli txiki-txiki bat gurdiari sokatxo batez tiraka.",
+        imageUrl: "/images/lukas-olentzero/p4.jpg",
+      },
+      {
+        pageNumber: 5,
+        text: "Eta hipopotamo potolo batekin? Uf, uf! Indar handia egiten du, baina honek ere ezin du gurdia mugitu!",
+        scenePrompt: "Hipopotamo potolo bat gurdiaren aurrean sokatik tiraka.",
+        imageUrl: "/images/lukas-olentzero/p5.jpg",
+      },
+      {
+        pageNumber: 6,
+        text: "Elefanteak ere ezin du! Eta kokodriloak? Alferrik, gurdia oso astuna da! Nor falta da?",
+        scenePrompt: "Elefantea eta kokodriloa gurditik tiraka alferrik.",
+        imageUrl: "/images/lukas-olentzero/p6.jpg",
+      },
+      {
+        pageNumber: 7,
+        text: "Baiki! Olentzerok animalia magiko bat du: bere astotxo maitea! I-a, i-a! «Honek baietz!»",
+        scenePrompt: "Olentzero ideia argiarekin eta astotxo gris lagunkoia ondoan.",
+        imageUrl: "/images/lukas-olentzero/p7.jpg",
+      },
+      {
+        pageNumber: 8,
+        text: "Astotxoak tira egin du eta... Biba! Gurdia, opariz beteta, martxan jarri da! Lukas eta Olentzero oso-oso pozik daude!",
+        scenePrompt: "Astotxoa opariz betetako gurdiarekin pozik martxan.",
+        imageUrl: "/images/lukas-olentzero/azala.jpg",
+      },
+      {
+        pageNumber: 9,
+        text: "«Eskerrik asko, Lukas!» esan dio Olentzerok. Eta astoarekin batera, Euskal Herriko ume guztiei opariak ematera abiatu da. Agur, Olentzero! Gabon!",
+        scenePrompt: "Olentzero gurdian urruntzen gaueko zeru izartsuaren azpian, Lukas agurtzen.",
+        imageUrl: "/images/lukas-olentzero/p9.jpg",
+      },
+    ],
+  },
+  {
     id: "ejemplo-lucia-bosque",
     title: "Lucía y el Bosque de las Luciérnagas",
     dedication: "Para Lucía, para que nunca dejes de mirar el mundo con curiosidad.",
