@@ -10,7 +10,6 @@ export default function PersonajesPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Form state (crear o editar)
   const [name, setName] = useState("");
   const [role, setRole] = useState("Protagonista");
   const [ageOrNote, setAgeOrNote] = useState("");
@@ -68,7 +67,7 @@ export default function PersonajesPage() {
 
   const handleSubmit = async (regeneratePortrait: boolean) => {
     if (!name.trim()) {
-      setNotice("El nombre del personaje es obligatorio.");
+      setNotice("Pertsonaiaren izena derrigorrezkoa da.");
       return;
     }
     setSubmitting(true);
@@ -91,8 +90,8 @@ export default function PersonajesPage() {
         const data = (await res.json()) as { character: CharacterProfile; warning?: string };
         setNotice(
           data.warning
-            ? `Personaje actualizado. Aviso IA: ${data.warning}`
-            : "Personaje actualizado correctamente."
+            ? `Pertsonaia eguneratu da. IA abisua: ${data.warning}`
+            : "Pertsonaia behar bezala eguneratu da."
         );
       } else {
         const res = await fetch("/api/characters", {
@@ -110,8 +109,8 @@ export default function PersonajesPage() {
         const data = (await res.json()) as { warning?: string };
         setNotice(
           data.warning
-            ? `Personaje guardado. Aviso IA: ${data.warning}`
-            : "Personaje creado y guardado en tu biblioteca."
+            ? `Pertsonaia gorde da. IA abisua: ${data.warning}`
+            : "Pertsonaia sortu eta zure liburutegian gorde da."
         );
       }
       resetForm();
@@ -131,17 +130,16 @@ export default function PersonajesPage() {
     <div className="container section">
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: "clamp(1.9rem, 3vw, 2.6rem)", marginBottom: 8 }}>
-          Mis personajes
+          Nire pertsonaiak
         </h1>
         <p style={{ color: "var(--ink-muted)" }}>
-          Crea y edita las personas, niños, mascotas o personajes fantásticos para reutilizarlos
-          en todos tus cuentos.
+          Sortu eta editatu pertsonak, haurrak, maskotak edo pertsonaia fantastikoak zure ipuin
+          guztietan berrerabiltzeko.
         </p>
       </div>
 
       {notice && <div className="notice-banner">{notice}</div>}
 
-      {/* Formulario Crear / Editar */}
       <div className="wizard-panel" style={{ marginBottom: 40 }}>
         <div
           style={{
@@ -152,11 +150,11 @@ export default function PersonajesPage() {
           }}
         >
           <h2 style={{ fontSize: "1.45rem" }}>
-            {editingId ? "Editar personaje" : "Añadir nuevo personaje"}
+            {editingId ? "Pertsonaia editatu" : "Pertsonaia berria gehitu"}
           </h2>
           {editingId && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={resetForm}>
-              <X size={15} /> Cancelar edición
+              <X size={15} /> Edizioa utzi
             </button>
           )}
         </div>
@@ -164,34 +162,34 @@ export default function PersonajesPage() {
         <div className="form-grid">
           <div>
             <div className="field">
-              <label htmlFor="p-name">Nombre *</label>
+              <label htmlFor="p-name">Izena *</label>
               <input
                 id="p-name"
                 className="input"
-                placeholder="Ej. Lukas, Unai, Amatxo, Toby..."
+                placeholder="Adib. Lukas, Unai, Amatxo, Toby..."
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
 
             <div className="field">
-              <label htmlFor="p-role">Rol</label>
+              <label htmlFor="p-role">Rola</label>
               <input
                 id="p-role"
                 className="input"
-                placeholder="Ej. Protagonista, Hermana, Mascota..."
+                placeholder="Adib. Protagonista, Arreba, Maskota..."
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               />
             </div>
 
             <div className="field">
-              <label htmlFor="p-desc">Rasgos físicos y ropa (para consistencia)</label>
+              <label htmlFor="p-desc">Ezaugarri fisikoak eta arropa (koherentziarako)</label>
               <textarea
                 id="p-desc"
                 rows={3}
                 className="textarea"
-                placeholder="Ej. Niño de 5 años, pelo castaño rizado, ojos marrones, jersey amarillo y mochila verde"
+                placeholder="Adib. 5 urteko mutikoa, ile kizkur gaztainkara, begi marroiak, jertse horia eta motxila berdea"
                 value={ageOrNote}
                 onChange={(e) => setAgeOrNote(e.target.value)}
               />
@@ -200,7 +198,7 @@ export default function PersonajesPage() {
 
           <div>
             <div className="field">
-              <label htmlFor="p-style">Estilo de retrato base</label>
+              <label htmlFor="p-style">Oinarrizko erretratuaren estiloa</label>
               <select
                 id="p-style"
                 className="input"
@@ -216,17 +214,17 @@ export default function PersonajesPage() {
             </div>
 
             <div className="field">
-              <label>Foto real de referencia (opcional)</label>
+              <label>Erreferentziazko benetako argazkia (aukerakoa)</label>
               <label className="upload-zone" htmlFor="p-photo">
                 {photoDataUrl ? (
-                  <img src={photoDataUrl} alt="Foto personaje" className="upload-preview" />
+                  <img src={photoDataUrl} alt="Pertsonaiaren argazkia" className="upload-preview" />
                 ) : (
                   <Upload size={24} color="var(--accent)" />
                 )}
                 <div>
-                  <strong>{photoDataUrl ? "Cambiar foto" : "Subir foto"}</strong>
+                  <strong>{photoDataUrl ? "Argazkia aldatu" : "Argazkia igo"}</strong>
                   <div style={{ fontSize: "0.84rem", color: "var(--ink-muted)" }}>
-                    Se usará para mantener la cara consistente en los cuentos.
+                    Ipuinetan aurpegia koherente mantentzeko erabiliko da.
                   </div>
                 </div>
                 <input
@@ -248,7 +246,7 @@ export default function PersonajesPage() {
                     disabled={submitting}
                     onClick={() => handleSubmit(false)}
                   >
-                    <Check size={16} /> Guardar cambios
+                    <Check size={16} /> Aldaketak gorde
                   </button>
                   <button
                     type="button"
@@ -257,7 +255,7 @@ export default function PersonajesPage() {
                     onClick={() => handleSubmit(true)}
                   >
                     {submitting ? <Loader2 size={16} /> : <Wand2 size={16} />}
-                    Guardar y regenerar retrato
+                    Gorde eta erretratua birsortu
                   </button>
                 </>
               ) : (
@@ -268,7 +266,7 @@ export default function PersonajesPage() {
                   onClick={() => handleSubmit(true)}
                 >
                   {submitting ? <Loader2 size={16} /> : <Plus size={16} />}
-                  {submitting ? "Creando personaje..." : "Crear personaje"}
+                  {submitting ? "Pertsonaia sortzen..." : "Pertsonaia sortu"}
                 </button>
               )}
             </div>
@@ -276,13 +274,12 @@ export default function PersonajesPage() {
         </div>
       </div>
 
-      {/* Lista de Personajes */}
       <h2 style={{ fontSize: "1.5rem", marginBottom: 20 }}>
-        Personajes guardados ({characters.length})
+        Gordetako pertsonaiak ({characters.length})
       </h2>
 
       {loading ? (
-        <p style={{ color: "var(--ink-muted)" }}>Cargando personajes...</p>
+        <p style={{ color: "var(--ink-muted)" }}>Pertsonaiak kargatzen...</p>
       ) : (
         <div className="grid-3">
           {characters.map((c) => (
@@ -296,7 +293,7 @@ export default function PersonajesPage() {
               <span className="tag">{c.role}</span>
               <h3 style={{ fontSize: "1.3rem", marginBottom: 6 }}>{c.name}</h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem", marginBottom: 16 }}>
-                {c.ageOrNote || "Sin descripción física añadida."}
+                {c.ageOrNote || "Deskribapen fisikorik gabe."}
               </p>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
@@ -304,13 +301,13 @@ export default function PersonajesPage() {
                   className="btn btn-secondary btn-sm"
                   onClick={() => startEdit(c)}
                 >
-                  <Edit3 size={14} /> Editar
+                  <Edit3 size={14} /> Editatu
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => handleDelete(c.id)}
-                  aria-label={`Eliminar a ${c.name}`}
+                  aria-label={`${c.name} ezabatu`}
                 >
                   <Trash2 size={14} />
                 </button>

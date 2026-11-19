@@ -12,6 +12,7 @@ async function StoriesGrid() {
     <div className="grid-3">
       {stories.map((story) => {
         const thumb =
+          story.coverImageUrl ||
           story.pages[0]?.imageUrl ||
           story.characters[0]?.baseIllustrationUrl ||
           "/images/hero-storybook.jpg";
@@ -21,14 +22,14 @@ async function StoriesGrid() {
               <img src={thumb} alt={story.title} />
             </div>
             <span className="tag">
-              {story.contentType} · {story.pages.length} págs
+              {story.contentType} · {story.pages.length} orr.
             </span>
             <h2 style={{ fontSize: "1.3rem", marginBottom: 8 }}>{story.title}</h2>
             <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem", marginBottom: 16 }}>
-              Protagonistas: {story.characters.map((c) => c.name).join(", ")}
+              Protagonistak: {story.characters.map((c) => c.name).join(", ")}
             </p>
             <Link href={`/cuento/${story.id}`} className="btn btn-secondary btn-sm">
-              <BookOpen size={15} /> Abrir libro
+              <BookOpen size={15} /> Liburua ireki
             </Link>
           </article>
         );
@@ -52,18 +53,19 @@ export default function MisCuentosPage() {
       >
         <div>
           <h1 style={{ fontSize: "clamp(1.9rem, 3vw, 2.6rem)", marginBottom: 6 }}>
-            Biblioteca de cuentos
+            Ipuinen liburutegia
           </h1>
           <p style={{ color: "var(--ink-muted)" }}>
-            Todos tus cuentos creados y ejemplos listos para leer, editar o imprimir en PDF.
+            Sortutako ipuin guztiak eta adibideak, irakurtzeko, editatzeko edo PDFan inprimatzeko
+            prest.
           </p>
         </div>
         <Link href="/crear" className="btn btn-primary">
-          <Sparkles size={16} /> Nuevo cuento
+          <Sparkles size={16} /> Ipuin berria
         </Link>
       </div>
 
-      <Suspense fallback={<p style={{ color: "var(--ink-muted)" }}>Cargando biblioteca...</p>}>
+      <Suspense fallback={<p style={{ color: "var(--ink-muted)" }}>Liburutegia kargatzen...</p>}>
         <StoriesGrid />
       </Suspense>
     </div>

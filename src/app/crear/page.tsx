@@ -13,11 +13,13 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import {
   BOOK_FORMATS,
   CONTENT_TYPES,
   ILLUSTRATION_STYLES,
+  STORY_TEMPLATES,
 } from "@/lib/catalog";
 import { parsePreparedScript } from "@/lib/script-parser";
 import {
@@ -35,6 +37,25 @@ interface DraftPage {
   scenePrompt: string;
 }
 
+const PAGE_COUNT_PRESETS = [4, 6, 8, 10, 12, 16, 20, 24];
+
+function resizeDraftPages(current: DraftPage[], targetCount: number): DraftPage[] {
+  const clamped = Math.min(24, Math.max(2, targetCount));
+  if (current.length === clamped) return current;
+  if (current.length > clamped) {
+    return current.slice(0, clamped).map((p, i) => ({ ...p, pageNumber: i + 1 }));
+  }
+  const extra: DraftPage[] = Array.from(
+    { length: clamped - current.length },
+    (_, i) => ({
+      pageNumber: current.length + i + 1,
+      text: "",
+      scenePrompt: "",
+    })
+  );
+  return [...current, ...extra];
+}
+
 export default function CrearCuentoPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -42,9 +63,10 @@ export default function CrearCuentoPage() {
   const [language, setLanguage] = useState<StoryLanguage>("eu");
   const [contentType, setContentType] = useState<ContentType>("narrativo");
   const [bookFormat, setBookFormat] = useState<BookFormat>("mini");
+  const [pageCount, setPageCount] = useState<number>(8);
   const [styleId, setStyleId] = useState<IllustrationStyleId>("watercolor");
 
-  // Personajes guardados y seleccionados
+  // Pertsonaiak
   const [savedCharacters, setSavedCharacters] = useState<CharacterProfile[]>([]);
   const [selectedCharacters, setSelectedCharacters] = useState<CharacterInput[]>([]);
   const [newCharName, setNewCharName] = useState("");
@@ -53,19 +75,18 @@ export default function CrearCuentoPage() {
   const [newCharPhoto, setNewCharPhoto] = useState<string | undefined>(undefined);
   const [addingChar, setAddingChar] = useState(false);
 
-  // Guion: "import" (pegar/subir guion), "custom" (página a página) o "idea" (generado por IA)
-  const [scriptMode, setScriptMode] = useState<"import" | "custom" | "idea">("import");
+  // Gidoia: "import" | "idea" | "custom"
+  const [scriptMode, setScriptMode] = useState<"import" | "idea" | "custom">("import");
   const [rawScriptText, setRawScriptText] = useState("");
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [dedication, setDedication] = useState("");
   const [coverScenePrompt, setCoverScenePrompt] = useState("");
   const [idea, setIdea] = useState("");
-  const [customPages, setCustomPages] = useState<DraftPage[]>([
-    { pageNumber: 1, text: "", scenePrompt: "" },
-    { pageNumber: 2, text: "", scenePrompt: "" },
-    { pageNumber: 3, text: "", scenePrompt: "" },
-  ]);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [customPages, setCustomPages] = useState<DraftPage[]>(() =>
+    resizeDraftPages([], 8)
+  );
 
   const [generatingStory, setGeneratingStory] = useState(false);
   const [progressStatus, setProgressStatus] = useState<string>("");
@@ -102,6 +123,17 @@ export default function CrearCuentoPage() {
       })
       .catch(() => {});
   }, []);
+
+  const updatePageCount = (count: number) => {
+    const clamped = Math.min(24, Math.max(2, count || 8));
+    setPageCount(clamped);
+    setCustomPages((prev) => resizeDraftPages(prev, clamped));
+  };
+
+  const handleSelectFormat = (fmtId: BookFormat, defaultPages: number) => {
+    setBookFormat(fmtId);
+    updatePageCount(defaultPages);
+  };
 
   const handleSaveApiKeys = async () => {
     setSavingKeys(true);
@@ -174,7 +206,7 @@ export default function CrearCuentoPage() {
         }),
       });
       const data = (await res.json()) as { character?: CharacterProfile; error?: string };
-      if (!res.ok || !data.character) throw new Error(data.error || "Error creando personaje");
+      if (!res.ok || !data.character) throw new Error(data.error || "Errorea pertsonaia sortzean");
       const created = data.character;
       setSavedCharacters((prev) => [created, ...prev]);
       setSelectedCharacters((prev) => [
@@ -192,24 +224,30 @@ export default function CrearCuentoPage() {
       setNewCharNote("");
       setNewCharPhoto(undefined);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "No se pudo añadir el personaje");
+      setErrorMsg(err instanceof Error ? err.message : "Ezin izan da pertsonaia gehitu");
     } finally {
       setAddingChar(false);
     }
   };
 
   const addCustomPage = () => {
-    setCustomPages((prev) => [
-      ...prev,
-      { pageNumber: prev.length + 1, text: "", scenePrompt: "" },
-    ]);
+    if (customPages.length >= 24) return;
+    setCustomPages((prev) => {
+      const next = [...prev, { pageNumber: prev.length + 1, text: "", scenePrompt: "" }];
+      setPageCount(next.length);
+      return next;
+    });
   };
 
   const removeCustomPage = (idx: number) => {
-    if (customPages.length <= 1) return;
-    setCustomPages((prev) =>
-      prev.filter((_, i) => i !== idx).map((p, i) => ({ ...p, pageNumber: i + 1 }))
-    );
+    if (customPages.length <= 2) return;
+    setCustomPages((prev) => {
+      const next = prev
+        .filter((_, i) => i !== idx)
+        .map((p, i) => ({ ...p, pageNumber: i + 1 }));
+      setPageCount(next.length);
+      return next;
+    });
   };
 
   const handleScriptFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -229,28 +267,89 @@ export default function CrearCuentoPage() {
     setErrorMsg(null);
     setImportNotice(null);
     if (!rawScriptText.trim()) {
-      setErrorMsg("Pega un guion o sube un archivo .txt / .md primero.");
+      setErrorMsg("Itsatsi gidoia edo igo .txt / .md fitxategi bat lehenengo.");
       return;
     }
     const parsed = parsePreparedScript(rawScriptText);
     if (parsed.pages.length === 0) {
-      setErrorMsg("No se pudieron detectar páginas en el texto. Revisa el formato.");
+      setErrorMsg("Ezin izan da orrialderik antzeman testuan. Egiaztatu formatua.");
       return;
     }
     if (parsed.title) setTitle(parsed.title);
     if (parsed.dedication) setDedication(parsed.dedication);
     if (parsed.coverScenePrompt) setCoverScenePrompt(parsed.coverScenePrompt);
-    setCustomPages(
-      parsed.pages.map((p, idx) => ({
-        pageNumber: idx + 1,
-        text: p.text,
-        scenePrompt: p.scenePrompt,
-      }))
-    );
+    const nextPages = parsed.pages.map((p, idx) => ({
+      pageNumber: idx + 1,
+      text: p.text,
+      scenePrompt: p.scenePrompt,
+    }));
+    setCustomPages(nextPages);
+    setPageCount(nextPages.length);
     setScriptMode("custom");
     setImportNotice(
-      `¡Guion importado! Se han cargado ${parsed.pages.length} páginas${parsed.coverScenePrompt ? " + portada (Azala)" : ""} listas para revisar e ilustrar.`
+      `Gidoia inportatuta! ${nextPages.length} orrialde${parsed.coverScenePrompt ? " + azala" : ""} kargatu dira berrikusi eta ilustratzeko prest.`
     );
+  };
+
+  const handleGenerateDraftFromIdea = async () => {
+    setErrorMsg(null);
+    setImportNotice(null);
+    if (selectedCharacters.length === 0) {
+      setErrorMsg("Aukeratu edo sortu gutxienez pertsonaia bat 3. urratsean.");
+      return;
+    }
+    if (!idea.trim()) {
+      setErrorMsg("Idatzi ipuinaren ideia edo aukeratu txantiloi bat.");
+      return;
+    }
+
+    setGeneratingDraft(true);
+    try {
+      const res = await fetch("/api/stories/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentType,
+          bookFormat,
+          styleId,
+          language,
+          characters: selectedCharacters,
+          idea: idea.trim(),
+          dedication: dedication.trim() || undefined,
+          requestedPages: pageCount,
+        }),
+      });
+      const data = (await res.json()) as {
+        title?: string;
+        dedication?: string;
+        pages?: DraftPage[];
+        error?: string;
+        warning?: string;
+      };
+      if (!res.ok || !data.pages) {
+        throw new Error(data.error || "Ezin izan da zirriborroa sortu");
+      }
+      if (!title.trim() && data.title) setTitle(data.title);
+      if (!dedication.trim() && data.dedication) setDedication(data.dedication);
+      setCustomPages(
+        data.pages.map((p, idx) => ({
+          pageNumber: idx + 1,
+          text: p.text,
+          scenePrompt: p.scenePrompt,
+        }))
+      );
+      setPageCount(data.pages.length);
+      setScriptMode("custom");
+      setImportNotice(
+        data.warning
+          ? `Zirriborroa sortu da (${data.pages.length} orrialde), abisuarekin: ${data.warning}`
+          : `${data.pages.length} orrialdeko gidoia sortu da! Orain orrialdez orrialde berrikusi eta editatu dezakezu ilustratu aurretik.`
+      );
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Errorea zirriborroa sortzean");
+    } finally {
+      setGeneratingDraft(false);
+    }
   };
 
   const generateImagesForStory = async (storyId: string, pageNumbers: number[]) => {
@@ -259,14 +358,14 @@ export default function CrearCuentoPage() {
 
     for (let i = 0; i < pageNumbers.length; i++) {
       const pageNum = pageNumbers[i];
-      setProgressStatus(`Ilustrando página ${i + 1} de ${pageNumbers.length}...`);
+      setProgressStatus(`${i + 1}. orrialdea ilustratzen (${pageNumbers.length}-tik)...`);
 
       let success = false;
       let lastWarn: string | undefined;
 
       for (let attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) {
-          setProgressStatus(`Reintentando página ${i + 1} de ${pageNumbers.length}...`);
+          setProgressStatus(`${i + 1}. orrialdea berriro saiatzen (${pageNumbers.length}-tik)...`);
           await new Promise((r) => setTimeout(r, 2000));
         }
 
@@ -290,16 +389,19 @@ export default function CrearCuentoPage() {
             break;
           }
           lastWarn = patchData.warning;
-          if (lastWarn && (lastWarn.includes("límite 0") || lastWarn.includes("No hay ningún proveedor"))) {
+          if (
+            lastWarn &&
+            (lastWarn.includes("límite 0") || lastWarn.includes("No hay ningún proveedor"))
+          ) {
             break;
           }
         } else {
-          lastWarn = `Error del servidor en página ${pageNum} (${patchRes.status})`;
+          lastWarn = `Zerbitzariaren errorea ${pageNum}. orrialdean (${patchRes.status})`;
         }
       }
 
       if (!success) {
-        setImageQuotaWarning(lastWarn || `No se pudo ilustrar la página ${pageNum}.`);
+        setImageQuotaWarning(lastWarn || `Ezin izan da ${pageNum}. orrialdea ilustratu.`);
         setCreatedDraftStoryId(storyId);
         setGeneratingStory(false);
         setProgressStatus("");
@@ -307,8 +409,7 @@ export default function CrearCuentoPage() {
       }
     }
 
-    // Generar ilustración de portada usando la página 1 como ancla visual
-    setProgressStatus("Ilustrando portada del cuento...");
+    setProgressStatus("Ipuinaren azala ilustratzen...");
     await fetch(`/api/stories/${storyId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -318,7 +419,7 @@ export default function CrearCuentoPage() {
     });
 
     if (generatedAiCount === 0) {
-      setImageQuotaWarning("No se pudieron generar las ilustraciones con IA.");
+      setImageQuotaWarning("Ezin izan dira ilustrazioak IArekin sortu.");
       setCreatedDraftStoryId(storyId);
       setGeneratingStory(false);
       setProgressStatus("");
@@ -334,7 +435,7 @@ export default function CrearCuentoPage() {
     setCreatedDraftStoryId(null);
 
     if (selectedCharacters.length === 0) {
-      setErrorMsg("Selecciona o crea al menos un personaje en el Paso 3.");
+      setErrorMsg("Aukeratu edo sortu gutxienez pertsonaia bat 3. urratsean.");
       return;
     }
 
@@ -345,12 +446,12 @@ export default function CrearCuentoPage() {
 
     if (scriptMode === "import") {
       if (!rawScriptText.trim()) {
-        setErrorMsg("Pega tu guion preparado o sube un archivo .txt / .md.");
+        setErrorMsg("Itsatsi prestatutako gidoia edo igo .txt / .md fitxategi bat.");
         return;
       }
       const parsed = parsePreparedScript(rawScriptText);
       if (parsed.pages.length === 0) {
-        setErrorMsg("No se pudieron detectar páginas en el guion pegado.");
+        setErrorMsg("Ezin izan da orrialderik antzeman itsatsitako gidoian.");
         return;
       }
       if (!resolvedTitle && parsed.title) resolvedTitle = parsed.title;
@@ -365,21 +466,22 @@ export default function CrearCuentoPage() {
         scenePrompt: p.scenePrompt,
       }));
       setCustomPages(pagesToCreate);
+      setPageCount(pagesToCreate.length);
       if (resolvedTitle) setTitle(resolvedTitle);
     } else if (scriptMode === "custom") {
       const validPages = customPages.filter((p) => p.text.trim() || p.scenePrompt.trim());
       if (validPages.length === 0) {
-        setErrorMsg("Escribe al menos una página de tu guion.");
+        setErrorMsg("Idatzi gutxienez zure gidoiko orrialde bat.");
         return;
       }
       pagesToCreate = validPages;
     } else if (!idea.trim()) {
-      setErrorMsg("Escribe la idea o argumento del cuento.");
+      setErrorMsg("Idatzi ipuinaren ideia edo laburpena.");
       return;
     }
 
     setGeneratingStory(true);
-    setProgressStatus("Preparando el guion y los personajes...");
+    setProgressStatus("Gidoia eta pertsonaiak prestatzen...");
     try {
       const useCustomPages = scriptMode === "import" || scriptMode === "custom";
       const res = await fetch("/api/stories", {
@@ -393,6 +495,7 @@ export default function CrearCuentoPage() {
           contentType,
           bookFormat,
           styleId,
+          requestedPages: pageCount,
           characters: selectedCharacters,
           skipImages: true,
           idea: scriptMode === "idea" ? idea.trim() : undefined,
@@ -411,21 +514,24 @@ export default function CrearCuentoPage() {
         story?: { id: string; pages: { pageNumber: number }[] };
         error?: string;
       };
-      if (!res.ok || !data.story) throw new Error(data.error || "Error creando el cuento");
+      if (!res.ok || !data.story) throw new Error(data.error || "Errorea ipuina sortzean");
 
       const storyId = data.story.id;
       const pageNums = data.story.pages.map((p) => p.pageNumber);
       const ok = await generateImagesForStory(storyId, pageNums);
       if (ok) {
-        setProgressStatus("¡Cuento listo! Abriendo libro...");
+        setProgressStatus("Ipuina prest! Liburua irekitzen...");
         router.push(`/cuento/${storyId}`);
       }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "No se pudo crear el cuento");
+      setErrorMsg(err instanceof Error ? err.message : "Ezin izan da ipuina sortu");
       setGeneratingStory(false);
       setProgressStatus("");
     }
   };
+
+  const activeStyle =
+    ILLUSTRATION_STYLES.find((s) => s.id === styleId) ?? ILLUSTRATION_STYLES[0];
 
   return (
     <div className="container wizard-shell">
@@ -441,10 +547,11 @@ export default function CrearCuentoPage() {
       >
         <div>
           <h1 style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", marginBottom: 8 }}>
-            Crear un nuevo cuento
+            Pertsonalizatu zure ipuina
           </h1>
           <p style={{ color: "var(--ink-muted)" }}>
-            Elige tus personajes, selecciona el estilo y mete tu propio guion o una idea.
+            Aukeratu formatua, orrialde kopurua, estiloa, pertsonaiak eta berrikusi orrialde
+            bakoitza ilustratu aurretik.
           </p>
         </div>
 
@@ -454,13 +561,13 @@ export default function CrearCuentoPage() {
           onClick={() => setShowKeySettings((v) => !v)}
         >
           {keyStatus?.hasGeminiKey || keyStatus?.hasFalKey
-            ? `Claves IA activas (${[
+            ? `IA gakoak aktibo (${[
                 keyStatus.hasGeminiKey ? `Gemini ${keyStatus.geminiPreview || ""}` : "",
                 keyStatus.hasFalKey ? `Fal ${keyStatus.falPreview || ""}` : "",
               ]
                 .filter(Boolean)
                 .join(" · ")})`
-            : "Configurar clave IA (Gemini / Fal)"}
+            : "Konfiguratu IA gakoak (Gemini / Fal)"}
         </button>
       </div>
 
@@ -475,14 +582,18 @@ export default function CrearCuentoPage() {
           }}
         >
           <strong style={{ display: "block", marginBottom: 6 }}>
-            Configurar claves de IA (se guardan localmente en tu equipo)
+            IA gakoen konfigurazioa (zure ekipoan gordetzen dira lokalki)
           </strong>
           <p style={{ color: "var(--ink-muted)", fontSize: "0.88rem", marginBottom: 12 }}>
-            Para generar ilustraciones necesitas una clave de <strong>Gemini con facturación activa</strong> en Google AI Studio o una clave de <strong>Fal.ai</strong>.
+            Ilustrazioak sortzeko, Google AI Studio-n <strong>faktura-kontua aktibatuta duen Gemini</strong>{" "}
+            gako bat edo <strong>Fal.ai</strong> gako bat behar duzu.
           </p>
           <div className="form-grid" style={{ marginBottom: 12 }}>
             <div className="field" style={{ marginBottom: 0 }}>
-              <label>GEMINI_API_KEY {keyStatus?.hasGeminiKey ? `(actual: ${keyStatus.geminiPreview})` : ""}</label>
+              <label>
+                GEMINI_API_KEY{" "}
+                {keyStatus?.hasGeminiKey ? `(oraingoa: ${keyStatus.geminiPreview})` : ""}
+              </label>
               <input
                 type="password"
                 className="input"
@@ -492,7 +603,10 @@ export default function CrearCuentoPage() {
               />
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
-              <label>FAL_KEY (opcional) {keyStatus?.hasFalKey ? `(actual: ${keyStatus.falPreview})` : ""}</label>
+              <label>
+                FAL_KEY (aukerakoa){" "}
+                {keyStatus?.hasFalKey ? `(oraingoa: ${keyStatus.falPreview})` : ""}
+              </label>
               <input
                 type="password"
                 className="input"
@@ -509,26 +623,26 @@ export default function CrearCuentoPage() {
               disabled={savingKeys || (!geminiInput.trim() && !falInput.trim())}
               onClick={handleSaveApiKeys}
             >
-              {savingKeys ? "Guardando..." : "Guardar claves"}
+              {savingKeys ? "Gordetzen..." : "Gakoak gorde"}
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setShowKeySettings(false)}
             >
-              Cerrar
+              Itxi
             </button>
           </div>
         </div>
       )}
 
-      {/* Stepper */}
+      {/* Urratsak (cuentosia.ai estilora, mugarik gabe) */}
       <div className="stepper" role="tablist">
         {[
-          { num: 1, label: "Idioma y Formato" },
-          { num: 2, label: "Estilo" },
-          { num: 3, label: `Personajes (${selectedCharacters.length})` },
-          { num: 4, label: "Guion" },
+          { num: 1, label: `Mota eta Orriak (${pageCount})` },
+          { num: 2, label: "Estiloa" },
+          { num: 3, label: `Pertsonaiak (${selectedCharacters.length})` },
+          { num: 4, label: "Gidoia eta Berrikuspena" },
         ].map((item) => {
           const isActive = step === item.num;
           const isDone = step > item.num;
@@ -577,7 +691,7 @@ export default function CrearCuentoPage() {
             }}
           >
             <strong style={{ display: "block", marginBottom: 6 }}>
-              No se pudieron generar las ilustraciones con IA
+              Ezin izan dira ilustrazioak IArekin sortu
             </strong>
             <p style={{ marginBottom: 12 }}>{imageQuotaWarning}</p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -586,7 +700,7 @@ export default function CrearCuentoPage() {
                 className="btn btn-secondary btn-sm"
                 onClick={() => setShowKeySettings(true)}
               >
-                Configurar clave IA aquí
+                Konfiguratu IA gakoa hemen
               </button>
               {createdDraftStoryId && (
                 <>
@@ -602,13 +716,13 @@ export default function CrearCuentoPage() {
                       }
                     }}
                   >
-                    <Sparkles size={15} /> Reintentar generación de imágenes
+                    <Sparkles size={15} /> Ilustrazioak berriro sortu
                   </button>
                   <Link
                     href={`/cuento/${createdDraftStoryId}`}
                     className="btn btn-secondary btn-sm"
                   >
-                    Abrir borrador del cuento de todas formas
+                    Ireki zirriborroa hala ere
                   </Link>
                 </>
               )}
@@ -619,25 +733,55 @@ export default function CrearCuentoPage() {
         {step === 1 && (
           <div>
             <h2 style={{ fontSize: "1.5rem", marginBottom: 14 }}>
-              1. Idioma, tipo y formato
+              1. Hizkuntza, mota, formatua eta orrialde kopurua
             </h2>
 
-            <div className="field" style={{ maxWidth: 340 }}>
-              <label htmlFor="story-lang">Idioma del cuento</label>
-              <select
-                id="story-lang"
-                className="input"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as StoryLanguage)}
-              >
-                <option value="eu">Euskera</option>
-                <option value="es">Español</option>
-                <option value="en">English</option>
-                <option value="fr">Français</option>
-              </select>
+            <div className="form-grid" style={{ marginBottom: 16 }}>
+              <div className="field">
+                <label htmlFor="story-lang">Ipuinaren hizkuntza</label>
+                <select
+                  id="story-lang"
+                  className="input"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as StoryLanguage)}
+                >
+                  <option value="eu">Euskara</option>
+                  <option value="es">Gaztelania (Español)</option>
+                  <option value="en">Ingelesa (English)</option>
+                  <option value="fr">Frantsesa (Français)</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label htmlFor="page-count-input">
+                  Zenbat orrialde izango ditu ipuinak? (2 - 24 orrialde)
+                </label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {PAGE_COUNT_PRESETS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`btn btn-sm ${pageCount === n ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => updatePageCount(n)}
+                    >
+                      {n} orr.
+                    </button>
+                  ))}
+                  <input
+                    id="page-count-input"
+                    type="number"
+                    min={2}
+                    max={24}
+                    className="input"
+                    style={{ width: 84, padding: "8px 10px" }}
+                    value={pageCount}
+                    onChange={(e) => updatePageCount(Number(e.target.value))}
+                  />
+                </div>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: "1.15rem", marginTop: 20 }}>Tipo de historia</h3>
+            <h3 style={{ fontSize: "1.15rem", marginTop: 18 }}>Zein ipuin mota sortu nahi duzu?</h3>
             <div className="option-grid">
               {CONTENT_TYPES.map((item) => (
                 <button
@@ -655,14 +799,14 @@ export default function CrearCuentoPage() {
               ))}
             </div>
 
-            <h3 style={{ fontSize: "1.15rem", marginTop: 12 }}>Formato del libro</h3>
+            <h3 style={{ fontSize: "1.15rem", marginTop: 12 }}>Liburuaren formatua</h3>
             <div className="option-grid">
               {BOOK_FORMATS.map((fmt) => (
                 <button
                   key={fmt.id}
                   type="button"
                   className={`option-card ${bookFormat === fmt.id ? "selected" : ""}`}
-                  onClick={() => setBookFormat(fmt.id)}
+                  onClick={() => handleSelectFormat(fmt.id, fmt.defaultPages)}
                 >
                   <span className="tag">{fmt.ageRange}</span>
                   <h4 style={{ fontSize: "1.15rem", marginBottom: 6 }}>{fmt.title}</h4>
@@ -678,11 +822,42 @@ export default function CrearCuentoPage() {
         {step === 2 && (
           <div>
             <h2 style={{ fontSize: "1.5rem", marginBottom: 6 }}>
-              2. Elige el estilo de ilustración
+              2. Aukeratu ilustrazio estiloa
             </h2>
-            <p style={{ color: "var(--ink-muted)" }}>
-              Todas las páginas seguirán este mismo estilo visual.
+            <p style={{ color: "var(--ink-muted)", marginBottom: 18 }}>
+              Zure ipuineko orrialde guztiek estilo bisual bera jarraituko dute.
             </p>
+
+            {/* Aukeratutako estiloaren aurrebista handia (cuentosia.ai bezala) */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(200px, 260px) 1fr",
+                gap: 20,
+                padding: 18,
+                borderRadius: "var(--radius-md)",
+                background: "var(--bg-cream)",
+                border: "1px solid var(--border)",
+                marginBottom: 22,
+                alignItems: "center",
+              }}
+            >
+              <img
+                src={activeStyle.previewImage}
+                alt={activeStyle.name}
+                style={{
+                  width: "100%",
+                  aspectRatio: "1 / 1",
+                  objectFit: "cover",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              />
+              <div>
+                <span className="tag">Aukeratuta · {activeStyle.tag}</span>
+                <h3 style={{ fontSize: "1.4rem", marginBottom: 8 }}>{activeStyle.name}</h3>
+                <p style={{ color: "var(--ink-muted)" }}>{activeStyle.description}</p>
+              </div>
+            </div>
 
             <div className="option-grid">
               {ILLUSTRATION_STYLES.map((st) => (
@@ -718,14 +893,14 @@ export default function CrearCuentoPage() {
             >
               <div>
                 <h2 style={{ fontSize: "1.5rem", marginBottom: 4 }}>
-                  3. Selecciona o añade tus personajes
+                  3. Aukeratu edo gehitu zure pertsonaiak
                 </h2>
                 <p style={{ color: "var(--ink-muted)" }}>
-                  Haz clic en tus personajes guardados para incluirlos en este cuento.
+                  Egin klik gordetako pertsonaietan ipuin honetan sartzeko (mugarik gabe).
                 </p>
               </div>
               <Link href="/personajes" className="btn btn-secondary btn-sm">
-                Editar biblioteca de personajes
+                Pertsonaien liburutegia editatu
               </Link>
             </div>
 
@@ -745,7 +920,7 @@ export default function CrearCuentoPage() {
                         alt={c.name}
                         className="style-thumb"
                       />
-                      <span className="tag">{isSelected ? "Seleccionado ✓" : c.role}</span>
+                      <span className="tag">{isSelected ? "Aukeratuta ✓" : c.role}</span>
                       <h3 style={{ fontSize: "1.15rem", marginBottom: 4 }}>{c.name}</h3>
                       <p style={{ color: "var(--ink-muted)", fontSize: "0.85rem" }}>
                         {c.ageOrNote || c.role}
@@ -756,7 +931,6 @@ export default function CrearCuentoPage() {
               </div>
             )}
 
-            {/* Añadir personaje rápido */}
             <div
               style={{
                 marginTop: 24,
@@ -767,24 +941,24 @@ export default function CrearCuentoPage() {
               }}
             >
               <h3 style={{ fontSize: "1.15rem", marginBottom: 14 }}>
-                + Añadir un personaje nuevo (se guarda en tu biblioteca)
+                + Pertsonaia berri bat gehitu (zure liburutegian gordetzen da)
               </h3>
               <div className="form-grid">
                 <div>
                   <div className="field">
-                    <label>Nombre</label>
+                    <label>Izena</label>
                     <input
                       className="input"
-                      placeholder="Ej. Unai, Amatxo, Astotxoa..."
+                      placeholder="Adib. Unai, Amatxo, Astotxoa..."
                       value={newCharName}
                       onChange={(e) => setNewCharName(e.target.value)}
                     />
                   </div>
                   <div className="field">
-                    <label>Rol</label>
+                    <label>Rola</label>
                     <input
                       className="input"
-                      placeholder="Ej. Protagonista, Acompañante..."
+                      placeholder="Adib. Protagonista, Laguntzailea..."
                       value={newCharRole}
                       onChange={(e) => setNewCharRole(e.target.value)}
                     />
@@ -792,24 +966,33 @@ export default function CrearCuentoPage() {
                 </div>
                 <div>
                   <div className="field">
-                    <label>Rasgos físicos / ropa</label>
+                    <label>Ezaugarri fisikoak / arropa</label>
                     <input
                       className="input"
-                      placeholder="Ej. 4 años, pelo rubio, txapela y jersey azul"
+                      placeholder="Adib. 4 urte, ile horia, txapela eta jertse urdina"
                       value={newCharNote}
                       onChange={(e) => setNewCharNote(e.target.value)}
                     />
                   </div>
                   <div className="field">
-                    <label>Foto opcional</label>
-                    <label className="upload-zone" htmlFor="wizard-char-photo" style={{ padding: 12 }}>
+                    <label>Argazkia (aukerakoa)</label>
+                    <label
+                      className="upload-zone"
+                      htmlFor="wizard-char-photo"
+                      style={{ padding: 12 }}
+                    >
                       {newCharPhoto ? (
-                        <img src={newCharPhoto} alt="Foto" className="upload-preview" style={{ width: 48, height: 48 }} />
+                        <img
+                          src={newCharPhoto}
+                          alt="Argazkia"
+                          className="upload-preview"
+                          style={{ width: 48, height: 48 }}
+                        />
                       ) : (
                         <Upload size={20} color="var(--accent)" />
                       )}
                       <span style={{ fontSize: "0.88rem" }}>
-                        {newCharPhoto ? "Foto lista" : "Subir foto"}
+                        {newCharPhoto ? "Argazkia prest" : "Argazkia igo"}
                       </span>
                       <input
                         id="wizard-char-photo"
@@ -829,7 +1012,7 @@ export default function CrearCuentoPage() {
                 onClick={handleQuickAddCharacter}
               >
                 {addingChar ? <Loader2 size={15} /> : <Plus size={15} />}
-                {addingChar ? "Guardando..." : "Guardar y añadir al cuento"}
+                {addingChar ? "Gordetzen..." : "Gorde eta ipuinera gehitu"}
               </button>
             </div>
           </div>
@@ -838,34 +1021,35 @@ export default function CrearCuentoPage() {
         {step === 4 && (
           <div>
             <h2 style={{ fontSize: "1.5rem", marginBottom: 6 }}>
-              4. Guion del cuento
+              4. Gidoia eta orrialdeen berrikuspena ({pageCount} orrialde)
             </h2>
             <p style={{ color: "var(--ink-muted)", marginBottom: 18 }}>
-              Pega o sube un guion ya preparado, escríbelo página a página, o escribe una idea para que la IA lo redacte.
+              Kontrol osoa: itsatsi gidoia, sortu zirriborroa ideiatik eta berrikusi orrialde
+              bakoitza ilustratu aurretik.
             </p>
 
-            {/* Selector de modo de guion */}
+            {/* Gidoi moduak */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
               <button
                 type="button"
                 className={`btn btn-sm ${scriptMode === "import" ? "btn-primary" : "btn-secondary"}`}
                 onClick={() => setScriptMode("import")}
               >
-                <FileText size={15} /> Subir o pegar guion preparado
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${scriptMode === "custom" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setScriptMode("custom")}
-              >
-                Editar página a página ({customPages.length})
+                <FileText size={15} /> Prestatutako gidoia igo edo itsatsi
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${scriptMode === "idea" ? "btn-primary" : "btn-secondary"}`}
                 onClick={() => setScriptMode("idea")}
               >
-                Generar guion desde una idea
+                <Wand2 size={15} /> Ideiatik sortu ({pageCount} orr.)
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${scriptMode === "custom" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setScriptMode("custom")}
+              >
+                Orrialdez orrialde editatu ({customPages.length})
               </button>
             </div>
 
@@ -886,21 +1070,21 @@ export default function CrearCuentoPage() {
 
             <div className="form-grid" style={{ marginBottom: 16 }}>
               <div className="field">
-                <label htmlFor="story-title">Título del cuento</label>
+                <label htmlFor="story-title">Ipuinaren izenburua</label>
                 <input
                   id="story-title"
                   className="input"
-                  placeholder="Ej. Lukas eta Olentzeroren Gurdi Magikoa"
+                  placeholder="Adib. Lukas eta Olentzeroren Gurdi Magikoa"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </div>
               <div className="field">
-                <label htmlFor="story-dedication">Dedicatoria</label>
+                <label htmlFor="story-dedication">Eskaintza</label>
                 <input
                   id="story-dedication"
                   className="input"
-                  placeholder="Ej. Nire semearentzat, maitasun osoz."
+                  placeholder="Adib. Nire semearentzat, maitasun osoz."
                   value={dedication}
                   onChange={(e) => setDedication(e.target.value)}
                 />
@@ -927,14 +1111,19 @@ export default function CrearCuentoPage() {
                   }}
                 >
                   <div>
-                    <strong>Pega tu guion completo o sube un archivo (.txt / .md)</strong>
+                    <strong>Itsatsi gidoi osoa edo igo fitxategi bat (.txt / .md)</strong>
                     <p style={{ color: "var(--ink-muted)", fontSize: "0.86rem", marginTop: 2 }}>
-                      Detecta automáticamente secciones como <code>Azala:</code>, <code>1. Irudia:</code>,{" "}
-                      <code>Irudiaren deskribapena:</code>, <code>Giroa:</code>, <code>Testu laburra:</code> (o en español/inglés).
+                      Automatikoki antzematen ditu <code>Azala:</code>, <code>1. Irudia:</code>,{" "}
+                      <code>Irudiaren deskribapena:</code>, <code>Giroa:</code> eta{" "}
+                      <code>Testu laburra:</code> atalak.
                     </p>
                   </div>
-                  <label className="btn btn-secondary btn-sm" htmlFor="script-file-upload" style={{ cursor: "pointer" }}>
-                    <Upload size={15} /> Subir archivo .txt / .md
+                  <label
+                    className="btn btn-secondary btn-sm"
+                    htmlFor="script-file-upload"
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Upload size={15} /> Igo .txt / .md fitxategia
                     <input
                       id="script-file-upload"
                       type="file"
@@ -959,11 +1148,58 @@ export default function CrearCuentoPage() {
                     className="btn btn-forest btn-sm"
                     onClick={handleParsePreparedScript}
                   >
-                    <Check size={15} /> Analizar y revisar páginas antes de ilustrar
+                    <Check size={15} /> Aztertu eta berrikusi orrialdeak ilustratu aurretik
                   </button>
                 </div>
               </div>
-            ) : scriptMode === "custom" ? (
+            ) : scriptMode === "idea" ? (
+              <div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>
+                    Txantiloi azkarrak (aukerakoa)
+                  </label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {STORY_TEMPLATES.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setTitle(tpl.title);
+                          setIdea(tpl.idea);
+                        }}
+                      >
+                        {tpl.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="story-idea">Zure ideia edo argumentua *</label>
+                  <textarea
+                    id="story-idea"
+                    rows={5}
+                    className="textarea"
+                    value={idea}
+                    onChange={(e) => setIdea(e.target.value)}
+                    placeholder="Deskribatu zer abentura bizi nahi duzun zure pertsonaiekin..."
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-forest btn-sm"
+                  disabled={generatingDraft}
+                  onClick={handleGenerateDraftFromIdea}
+                >
+                  {generatingDraft ? <Loader2 size={15} /> : <Wand2 size={15} />}
+                  {generatingDraft
+                    ? `${pageCount} orrialdeko zirriborroa sortzen...`
+                    : `Sortu ${pageCount} orrialdeko zirriborroa (IA) berrikusteko`}
+                </button>
+              </div>
+            ) : (
               <div>
                 {customPages.map((p, idx) => (
                   <div
@@ -984,24 +1220,24 @@ export default function CrearCuentoPage() {
                         marginBottom: 10,
                       }}
                     >
-                      <strong>Página {p.pageNumber}</strong>
-                      {customPages.length > 1 && (
+                      <strong>{p.pageNumber}. orrialdea</strong>
+                      {customPages.length > 2 && (
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={() => removeCustomPage(idx)}
                         >
-                          <Trash2 size={14} /> Quitar
+                          <Trash2 size={14} /> Kendu
                         </button>
                       )}
                     </div>
                     <div className="form-grid">
                       <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Texto que aparecerá en el libro</label>
+                        <label>Liburuan agertuko den testua</label>
                         <textarea
                           rows={3}
                           className="textarea"
-                          placeholder="Ej. Hau Lukas da! Basozain gazte eta oso alai bat..."
+                          placeholder="Adib. Hau Lukas da! Basozain gazte eta oso alai bat..."
                           value={p.text}
                           onChange={(e) =>
                             setCustomPages((prev) =>
@@ -1013,11 +1249,11 @@ export default function CrearCuentoPage() {
                         />
                       </div>
                       <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Descripción visual de la escena (para la ilustración)</label>
+                        <label>Eszenaren deskribapen bisuala (ilustraziorako)</label>
                         <textarea
                           rows={3}
                           className="textarea"
-                          placeholder="Ej. Lukas con ropa verde y txapela saludando en el bosque nevado con su caserío detrás."
+                          placeholder="Adib. Lukas jantzi berdearekin eta txapelarekin baso elurtuan agurtzen..."
                           value={p.scenePrompt}
                           onChange={(e) =>
                             setCustomPages((prev) =>
@@ -1032,25 +1268,15 @@ export default function CrearCuentoPage() {
                   </div>
                 ))}
 
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={addCustomPage}
-                >
-                  <Plus size={15} /> Añadir página
-                </button>
-              </div>
-            ) : (
-              <div className="field">
-                <label htmlFor="story-idea">Tu idea o argumento *</label>
-                <textarea
-                  id="story-idea"
-                  rows={5}
-                  className="textarea"
-                  value={idea}
-                  onChange={(e) => setIdea(e.target.value)}
-                  placeholder="Describe qué aventura quieres que vivan tus personajes..."
-                />
+                {customPages.length < 24 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={addCustomPage}
+                  >
+                    <Plus size={15} /> Orrialdea gehitu
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1063,7 +1289,7 @@ export default function CrearCuentoPage() {
             disabled={step === 1}
             onClick={() => setStep((s) => Math.max(1, s - 1) as 1 | 2 | 3 | 4)}
           >
-            <ArrowLeft size={16} /> Anterior
+            <ArrowLeft size={16} /> Aurrekoa
           </button>
 
           {step < 4 ? (
@@ -1072,7 +1298,7 @@ export default function CrearCuentoPage() {
               className="btn btn-primary"
               onClick={() => setStep((s) => Math.min(4, s + 1) as 1 | 2 | 3 | 4)}
             >
-              Siguiente <ArrowRight size={16} />
+              Hurrengoa <ArrowRight size={16} />
             </button>
           ) : (
             <button
@@ -1083,7 +1309,9 @@ export default function CrearCuentoPage() {
               onClick={handleCreateStory}
             >
               {generatingStory ? <Loader2 size={18} /> : <Sparkles size={18} />}
-              {generatingStory ? progressStatus || "Creando cuento..." : "Crear cuento"}
+              {generatingStory
+                ? progressStatus || "Ipuina sortzen..."
+                : "Ipuina eta ilustrazioak sortu"}
             </button>
           )}
         </div>

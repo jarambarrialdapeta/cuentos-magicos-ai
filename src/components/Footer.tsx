@@ -6,21 +6,24 @@ export function Footer() {
       <div className="container footer-inner">
         <div>
           <strong className="font-display" style={{ color: "var(--ink)", fontSize: "1.1rem" }}>
-            CuentosMágicos
+            IpuinMagikoak
           </strong>
           <p style={{ marginTop: 4 }}>
-            Historias ilustradas con personajes consistentes a partir de tu foto.
+            Zure pertsonaiekin eta gidoiekin sortutako ipuin ilustratu pertsonalizatuak.
           </p>
         </div>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           <Link href="/crear" className="nav-link">
-            Crear cuento
+            Ipuina sortu
+          </Link>
+          <Link href="/personajes" className="nav-link">
+            Pertsonaiak
           </Link>
           <Link href="/ejemplos" className="nav-link">
-            Ejemplos
+            Adibideak
           </Link>
           <Link href="/mis-cuentos" className="nav-link">
-            Mis cuentos
+            Nire ipuinak
           </Link>
         </div>
       </div>

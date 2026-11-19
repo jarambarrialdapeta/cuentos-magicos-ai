@@ -17,9 +17,9 @@ const instrumentSans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "CuentosMágicos | Crea Cuentos Personalizados con Foto e Ilustraciones Consistentes",
+  title: "IpuinMagikoak | Sortu Zure Ipuin Ilustratu Pertsonalizatuak",
   description:
-    "Convierte una foto en el protagonista de un cuento ilustrado único. Personajes consistentes página a página, edición en vivo, narración en audio y exportación PDF.",
+    "Bihurtu argazki bat ipuin ilustratu bateko protagonista. Pertsonaia koherenteak orrialdez orrialde, zuzeneko edizioa, audio-narrazioa eta PDF esportazioa.",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${fraunces.variable} ${instrumentSans.variable}`}>
+    <html lang="eu" className={`${fraunces.variable} ${instrumentSans.variable}`}>
       <body>
         <Navbar />
         <main>{children}</main>

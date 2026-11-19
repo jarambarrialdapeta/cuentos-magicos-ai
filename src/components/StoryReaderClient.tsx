@@ -78,7 +78,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     }
 
     const utterance = new SpeechSynthesisUtterance(textToRead);
-    utterance.lang = SPEECH_LANG[story.language || "es"] || "es-ES";
+    utterance.lang = SPEECH_LANG[story.language || "eu"] || "eu-ES";
     utterance.rate = 0.96;
     utterance.onend = () => {
       if (index + 1 < totalViews) {
@@ -110,7 +110,11 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     try {
       const payload =
         currentIndex === 0
-          ? { title: draftTitle, dedication: draftDedication }
+          ? {
+              title: draftTitle,
+              dedication: draftDedication,
+              regenerateCover: regenerateImage,
+            }
           : {
               pageNumber: activePage?.pageNumber,
               text: draftPageText,
@@ -178,20 +182,20 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     <div className="container reader-shell">
       {actionNotice && (
         <div className="notice-banner no-print">
-          <strong>Aviso:</strong> {actionNotice}
+          <strong>Abisua:</strong> {actionNotice}
         </div>
       )}
 
-      {/* Toolbar */}
+      {/* Tresna-barra */}
       <div className="reader-toolbar no-print">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link href="/mis-cuentos" className="btn btn-secondary btn-sm">
-            <ArrowLeft size={16} /> Biblioteca
+            <ArrowLeft size={16} /> Liburutegia
           </Link>
           <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
             {currentIndex === 0
-              ? "Portada y dedicatoria"
-              : `Página ${activePage?.pageNumber} de ${story.pages.length}`}
+              ? "Azala eta eskaintza"
+              : `${activePage?.pageNumber}. orrialdea (${story.pages.length}-tik)`}
           </span>
         </div>
 
@@ -202,7 +206,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             onClick={toggleAudio}
           >
             {isSpeaking ? <Square size={15} /> : <Volume2 size={15} />}
-            {isSpeaking ? "Detener narración" : "Escuchar narración"}
+            {isSpeaking ? "Narrazioa gelditu" : "Narrazioa entzun"}
           </button>
 
           <button
@@ -211,7 +215,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             onClick={() => setIsEditing((v) => !v)}
           >
             <Edit3 size={15} />
-            {isEditing ? "Cerrar editor" : "Editar página"}
+            {isEditing ? "Editorea itxi" : "Orrialdea editatu"}
           </button>
 
           <button
@@ -220,12 +224,12 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             onClick={() => window.print()}
           >
             <Printer size={15} />
-            Imprimir / PDF
+            Inprimatu / PDF
           </button>
         </div>
       </div>
 
-      {/* Book Spread */}
+      {/* Liburua */}
       <div className="book-spread no-print">
         <div className="book-page-left">
           <img
@@ -233,7 +237,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             alt={
               currentIndex === 0
                 ? story.title
-                : `Ilustración página ${activePage?.pageNumber}`
+                : `${activePage?.pageNumber}. orrialdeko ilustrazioa`
             }
           />
         </div>
@@ -241,11 +245,11 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
         <div className="book-page-right">
           {currentIndex === 0 ? (
             <div>
-              <span className="tag">Portada</span>
+              <span className="tag">Azala</span>
               {isEditing ? (
                 <div>
                   <div className="field">
-                    <label>Título del libro</label>
+                    <label>Liburuaren izenburua</label>
                     <input
                       className="input"
                       value={draftTitle}
@@ -253,7 +257,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                     />
                   </div>
                   <div className="field">
-                    <label>Dedicatoria</label>
+                    <label>Eskaintza</label>
                     <textarea
                       rows={3}
                       className="textarea"
@@ -261,14 +265,25 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                       onChange={(e) => setDraftDedication(e.target.value)}
                     />
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => handleSaveEdit(false)}
-                    disabled={saving}
-                  >
-                    <Check size={15} /> {saving ? "Guardando..." : "Guardar cambios"}
-                  </button>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleSaveEdit(false)}
+                      disabled={saving || regenerating}
+                    >
+                      <Check size={15} /> {saving ? "Gordetzen..." : "Aldaketak gorde"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-forest btn-sm"
+                      onClick={() => handleSaveEdit(true)}
+                      disabled={saving || regenerating}
+                    >
+                      {regenerating ? <Loader2 size={15} /> : <Wand2 size={15} />}
+                      {regenerating ? "Azala birsortzen..." : "Azala birsortu"}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -288,7 +303,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                     “{story.dedication}”
                   </p>
                   <div style={{ fontSize: "0.9rem", color: "var(--ink-muted)" }}>
-                    Protagonistas:{" "}
+                    Protagonistak:{" "}
                     <strong>{story.characters.map((c) => c.name).join(", ")}</strong>
                   </div>
                 </>
@@ -296,11 +311,11 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             </div>
           ) : (
             <div>
-              <span className="tag">Página {activePage?.pageNumber}</span>
+              <span className="tag">{activePage?.pageNumber}. orrialdea</span>
               {isEditing ? (
                 <div>
                   <div className="field">
-                    <label>Texto de la página {activePage?.pageNumber}</label>
+                    <label>{activePage?.pageNumber}. orrialdeko testua</label>
                     <textarea
                       rows={4}
                       className="textarea"
@@ -309,7 +324,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                     />
                   </div>
                   <div className="field">
-                    <label>Descripción visual de la escena (prompt)</label>
+                    <label>Eszenaren deskribapen bisuala (ilustraziorako)</label>
                     <textarea
                       rows={3}
                       className="textarea"
@@ -324,7 +339,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                       onClick={() => handleSaveEdit(false)}
                       disabled={saving || regenerating}
                     >
-                      <Check size={15} /> {saving ? "Guardando..." : "Guardar texto"}
+                      <Check size={15} /> {saving ? "Gordetzen..." : "Testua gorde"}
                     </button>
                     <button
                       type="button"
@@ -333,10 +348,10 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                       disabled={saving || regenerating}
                     >
                       {regenerating ? <Loader2 size={15} /> : <Wand2 size={15} />}
-                      {regenerating ? "Regenerando..." : "Regenerar ilustración"}
+                      {regenerating ? "Birsortzen..." : "Ilustrazioa birsortu"}
                     </button>
                     <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
-                      <Upload size={15} /> Subir imagen propia
+                      <Upload size={15} /> Nire irudia igo
                       <input
                         type="file"
                         accept="image/*"
@@ -352,7 +367,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             </div>
           )}
 
-          {/* Navigation */}
+          {/* Nabigazioa */}
           <div className="book-nav">
             <button
               type="button"
@@ -364,7 +379,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                 setCurrentIndex((i) => Math.max(0, i - 1));
               }}
             >
-              <ArrowLeft size={16} /> Anterior
+              <ArrowLeft size={16} /> Aurrekoa
             </button>
 
             <span style={{ fontSize: "0.85rem", color: "var(--ink-muted)" }}>
@@ -381,13 +396,13 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                 setCurrentIndex((i) => Math.min(totalViews - 1, i + 1));
               }}
             >
-              Siguiente <ArrowRight size={16} />
+              Hurrengoa <ArrowRight size={16} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Print / PDF Layout */}
+      {/* PDF / Inprimaketa */}
       <div className="print-only">
         <div className="print-page" style={{ textAlign: "center" }}>
           <h1 style={{ fontSize: "2.4rem", marginBottom: 16 }}>{story.title}</h1>
@@ -402,12 +417,12 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
           <div key={p.pageNumber} className="print-page">
             <img
               src={p.imageUrl}
-              alt={`Página ${p.pageNumber}`}
+              alt={`${p.pageNumber}. orrialdea`}
               style={{ maxWidth: 440, margin: "0 auto 20px", borderRadius: 12 }}
             />
             <p style={{ fontSize: "1.25rem", lineHeight: 1.6 }}>{p.text}</p>
             <div style={{ marginTop: 12, fontSize: "0.85rem", color: "#666" }}>
-              Página {p.pageNumber}
+              {p.pageNumber}. orrialdea
             </div>
           </div>
         ))}

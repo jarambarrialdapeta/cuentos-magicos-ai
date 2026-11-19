@@ -29,7 +29,7 @@ export default function StoryPage({
     <Suspense
       fallback={
         <div className="container reader-shell">
-          <p style={{ color: "var(--ink-muted)" }}>Abriendo tu cuento...</p>
+          <p style={{ color: "var(--ink-muted)" }}>Zure ipuina irekitzen...</p>
         </div>
       }
     >

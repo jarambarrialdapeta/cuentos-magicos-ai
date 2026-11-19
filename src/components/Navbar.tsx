@@ -9,32 +9,32 @@ export function Navbar() {
           <span className="brand-mark">
             <BookOpen size={20} />
           </span>
-          <span>CuentosMágicos</span>
+          <span>IpuinMagikoak</span>
         </Link>
 
-        <nav className="nav-links" aria-label="Navegación principal">
+        <nav className="nav-links" aria-label="Nabigazio nagusia">
           <Link href="/crear" className="nav-link">
-            Crear cuento
+            Ipuina sortu
           </Link>
           <Link href="/personajes" className="nav-link">
-            Mis personajes
+            Nire pertsonaiak
           </Link>
           <Link href="/mis-cuentos" className="nav-link">
-            Mis cuentos
+            Nire ipuinak
           </Link>
           <Link href="/ejemplos" className="nav-link">
-            Ejemplos
+            Adibideak
           </Link>
         </nav>
 
         <div className="nav-actions">
           <Link href="/personajes" className="btn btn-secondary btn-sm">
             <Users size={15} />
-            Personajes
+            Pertsonaiak
           </Link>
           <Link href="/crear" className="btn btn-primary btn-sm">
             <Sparkles size={16} />
-            Nuevo cuento
+            Ipuin berria
           </Link>
         </div>
       </div>

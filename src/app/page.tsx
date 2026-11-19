@@ -16,31 +16,31 @@ export default function HomePage() {
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <span className="hero-eyebrow">Taller personal de cuentos</span>
+            <span className="hero-eyebrow">Ipuin tailer pertsonala</span>
             <h1>
-              Crea tus propios cuentos ilustrados con tus personajes y tus guiones
+              Sortu zure ipuin ilustratuak zure pertsonaiekin eta zure gidoiekin
             </h1>
             <p className="hero-lead">
-              Guarda a tu hijo, familiares o mascotas como personajes reutilizables, escribe tu
-              propio guion página a página (en euskera, español o el idioma que elijas), edita
-              cada escena e imprime el libro en PDF.
+              Gorde zure seme-alaba, senideak edo maskotak berrerabiltzeko pertsonaia gisa, aukeratu
+              zenbat orrialde izango dituen, idatzi edo itsatsi zure gidoia eta inprimatu liburua
+              PDFan.
             </p>
 
             <div className="hero-cta-row">
               <Link href="/crear" id="hero-cta-create" className="btn btn-primary btn-lg">
                 <Sparkles size={18} />
-                Crear un cuento ahora
+                Ipuin bat sortu orain
               </Link>
               <Link href="/personajes" id="hero-cta-chars" className="btn btn-secondary btn-lg">
                 <Users size={18} />
-                Gestionar personajes
+                Pertsonaiak kudeatu
               </Link>
             </div>
 
             <div className="hero-trust">
-              <span>Sin suscripciones ni pagos</span>
-              <span>Guion propio o asistido</span>
-              <span>Edición página a página</span>
+              <span>Harpidetzarik eta mugarik gabe</span>
+              <span>Orrialde kopuru librea</span>
+              <span>Orrialdez orrialdeko edizioa</span>
             </div>
           </div>
 
@@ -55,90 +55,89 @@ export default function HomePage() {
               <div>
                 <strong>Lukas eta Olentzeroren Gurdi Magikoa</strong>
                 <div style={{ color: "var(--ink-muted)", fontSize: "0.82rem" }}>
-                  Cuento en euskera creado con personajes consistentes
+                  Euskaraz sortutako ipuina pertsonaia koherenteekin
                 </div>
               </div>
               <Link href="/cuento/ejemplo-lukas-olentzero" className="btn btn-forest btn-sm">
-                Leer ahora
+                Irakurri orain
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Flujo del taller */}
+      {/* Prozesua */}
       <section className="section section-warm">
         <div className="container">
           <div className="section-header">
-            <h2>Tu proceso creativo en 3 pasos</h2>
+            <h2>Zure sorkuntza-prozesua 3 urratsetan</h2>
             <p>
-              Pensado para uso personal: diseña tus personajes una vez y úsalos en todas las
-              historias que quieras crear para tu hijo.
+              Erabilera pertsonalerako pentsatua: diseinatu zure pertsonaiak behin eta erabili nahi
+              dituzun istorio guztietan.
             </p>
           </div>
 
           <div className="grid-3">
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/char-base.jpg" alt="Personaje base consistente" />
+                <img src="/images/char-base.jpg" alt="Oinarrizko pertsonaia koherentea" />
               </div>
-              <span className="tag">1 · Personajes</span>
+              <span className="tag">1 · Pertsonaiak</span>
               <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
-                Crea y edita personas reales
+                Sortu eta editatu benetako pertsonak
               </h3>
               <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
-                Sube una foto o describe rasgos físicos, genera su retrato base y edítalo cuando
-                quieras.
+                Igo argazki bat edo deskribatu ezaugarri fisikoak, sortu oinarrizko erretratua eta
+                editatu nahi duzunean.
               </p>
               <Link href="/personajes" className="btn btn-secondary btn-sm">
-                Ir a Mis personajes <ArrowRight size={14} />
+                Joan Nire pertsonaietara <ArrowRight size={14} />
               </Link>
             </article>
 
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/lukas-olentzero/p3.jpg" alt="Guion página a página" />
+                <img src="/images/lukas-olentzero/p3.jpg" alt="Orrialdez orrialdeko gidoia" />
               </div>
-              <span className="tag">2 · Guion y estilo</span>
+              <span className="tag">2 · Gidoia eta estiloa</span>
               <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
-                Mete tu propio guion o una idea
+                Itsatsi gidoia edo sortu ideiatik
               </h3>
               <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
-                Escribe escena por escena lo que ocurre en cada página o deja que la IA redacte
-                el borrador.
+                Aukeratu orrialde kopurua, itsatsi prestatutako gidoia edo sortu zirriborroa
+                ideia batetik ilustratu aurretik.
               </p>
               <Link href="/crear" className="btn btn-secondary btn-sm">
-                Abrir el creador <ArrowRight size={14} />
+                Ireki sortzailea <ArrowRight size={14} />
               </Link>
             </article>
 
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/lukas-olentzero/p9.jpg" alt="Libro ilustrado terminado" />
+                <img src="/images/lukas-olentzero/p9.jpg" alt="Amaitutako liburu ilustratua" />
               </div>
-              <span className="tag tag-accent">3 · Edita y lee</span>
+              <span className="tag tag-accent">3 · Editatu eta irakurri</span>
               <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
-                Ajusta cada página e imprime
+                Doitu orrialde bakoitza eta inprimatu
               </h3>
               <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
-                Modifica textos, regenera ilustraciones sueltas, escucha la narración o imprime en
-                PDF.
+                Aldatu testuak, birsortu ilustrazio solteak, entzun narrazioa edo inprimatu PDFan.
               </p>
               <Link href="/mis-cuentos" className="btn btn-secondary btn-sm">
-                Ver biblioteca <ArrowRight size={14} />
+                Ikusi liburutegia <ArrowRight size={14} />
               </Link>
             </article>
           </div>
         </div>
       </section>
 
-      {/* Estilos disponibles */}
+      {/* Estiloak */}
       <section className="section">
         <div className="container">
           <div className="section-header">
-            <h2>Estilos de ilustración disponibles</h2>
+            <h2>Eskuragarri dauden ilustrazio estiloak</h2>
             <p>
-              Cambia el estilo visual de cualquier cuento o personaje en un clic.
+              Aldatu edozein ipuin edo pertsonaiaren estilo bisuala klik bakar batean.
             </p>
           </div>
 
@@ -159,36 +158,36 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Herramientas */}
+      {/* Tresnak */}
       <section className="section section-warm">
         <div className="container">
           <div className="grid-4">
             <div className="card">
               <Users size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Personajes editables</h3>
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Pertsonaia editagarriak</h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
-                Cambia nombre, ropa, descripción o foto en cualquier momento.
+                Aldatu izena, arropa, deskribapena edo argazkia edozein unetan.
               </p>
             </div>
             <div className="card">
               <Edit3 size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Guion libre</h3>
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Gidoi librea</h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
-                Introduce tus propios textos y escenas en euskera, español, inglés o francés.
+                Sartu zure testuak eta eszenak euskaraz, gaztelaniaz, ingelesez edo frantsesez.
               </p>
             </div>
             <div className="card">
               <Volume2 size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Narración en audio</h3>
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Audio-narrazioa</h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
-                Reproduce el cuento en voz alta con paso automático de páginas.
+                Erreproduzitu ipuina ozenki orrialde-pasatze automatikoarekin.
               </p>
             </div>
             <div className="card">
               <Printer size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Impresión PDF</h3>
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>PDF inprimaketa</h3>
               <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
-                Guarda o imprime el libro maquetado listo para leer en papel.
+                Gorde edo inprimatu maketatutako liburua paperean irakurtzeko prest.
               </p>
             </div>
           </div>
@@ -196,7 +195,7 @@ export default function HomePage() {
           <div style={{ textAlign: "center", marginTop: 40 }}>
             <Link href="/crear" className="btn btn-primary btn-lg">
               <BookOpen size={18} />
-              Empezar un nuevo cuento
+              Hasi ipuin berri bat
             </Link>
           </div>
         </div>
