@@ -11,6 +11,7 @@ import {
   ContentType,
   IllustrationStyleId,
   Story,
+  StoryLanguage,
 } from "@/lib/types";
 
 export async function GET() {
@@ -21,75 +22,116 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
+      title?: string;
+      dedication?: string;
+      language?: StoryLanguage;
       contentType: ContentType;
       bookFormat: BookFormat;
       styleId: IllustrationStyleId;
       characters: CharacterInput[];
-      idea: string;
-      dedication?: string;
+      idea?: string;
+      requestedPages?: number;
+      customPages?: { pageNumber: number; text: string; scenePrompt: string; imageUrl?: string }[];
     };
 
     if (!body.characters?.length || !body.characters[0]?.name?.trim()) {
       return NextResponse.json(
-        { error: "Debes incluir al menos un protagonista con nombre." },
+        { error: "Debes incluir al menos un personaje con nombre." },
         { status: 400 }
       );
     }
 
-    if (!body.idea?.trim()) {
+    const hasCustomPages = Array.isArray(body.customPages) && body.customPages.length > 0;
+    if (!hasCustomPages && !body.idea?.trim()) {
       return NextResponse.json(
-        { error: "Describe una idea o elige una plantilla para la historia." },
+        { error: "Escribe una idea o añade las páginas de tu guion." },
         { status: 400 }
       );
     }
 
-    const mainChar = body.characters[0];
-    let baseIllustrationUrl = mainChar.baseIllustrationUrl;
+    const styleId = body.styleId || "watercolor";
+    const language = body.language || "es";
+    const warnings: string[] = [];
 
-    if (!baseIllustrationUrl) {
-      const charRes = await generateBaseCharacter({
-        name: mainChar.name,
-        ageOrNote: mainChar.ageOrNote,
-        styleId: body.styleId,
-        photoDataUrl: mainChar.photoDataUrl,
+    // Asegurar retrato base para el protagonista si no tiene aún
+    const updatedCharacters: CharacterInput[] = [];
+    for (let i = 0; i < body.characters.length; i++) {
+      const c = body.characters[i];
+      if (!c.name.trim()) continue;
+      let baseIllustrationUrl = c.baseIllustrationUrl;
+      if (!baseIllustrationUrl && i === 0) {
+        const charRes = await generateBaseCharacter({
+          name: c.name,
+          ageOrNote: c.ageOrNote,
+          styleId,
+          photoDataUrl: c.photoDataUrl,
+        });
+        baseIllustrationUrl = charRes.illustrationUrl;
+        if (charRes.warning) warnings.push(charRes.warning);
+      }
+      updatedCharacters.push({
+        id: c.id || `char-${i + 1}`,
+        name: c.name.trim(),
+        role: c.role?.trim() || (i === 0 ? "Protagonista" : "Acompañante"),
+        ageOrNote: c.ageOrNote?.trim() || "",
+        photoDataUrl: c.photoDataUrl,
+        baseIllustrationUrl,
       });
-      baseIllustrationUrl = charRes.illustrationUrl;
     }
 
-    const updatedCharacters: CharacterInput[] = body.characters.map((c, i) => ({
-      id: c.id || `char-${i + 1}`,
-      name: c.name.trim(),
-      role: c.role?.trim() || (i === 0 ? "Protagonista" : "Acompañante"),
-      ageOrNote: c.ageOrNote?.trim() || "",
-      baseIllustrationUrl: i === 0 ? baseIllustrationUrl : c.baseIllustrationUrl,
-    }));
+    let finalTitle = body.title?.trim() || "";
+    let finalDedication = body.dedication?.trim() || "";
+    let scriptPages: { pageNumber: number; text: string; scenePrompt: string; imageUrl?: string }[] = [];
+    let scriptMode: "ai" | "demo" = "demo";
 
-    const script = await generateStoryScript({
-      contentType: body.contentType || "narrativo",
-      bookFormat: body.bookFormat || "mini",
-      styleId: body.styleId || "watercolor",
-      characters: updatedCharacters,
-      idea: body.idea.trim(),
-      dedication: body.dedication,
-    });
+    if (hasCustomPages) {
+      finalTitle = finalTitle || `Cuento de ${updatedCharacters[0].name}`;
+      finalDedication = finalDedication || `Para ${updatedCharacters[0].name}.`;
+      scriptPages = body.customPages!.map((p, idx) => ({
+        pageNumber: idx + 1,
+        text: p.text.trim(),
+        scenePrompt: p.scenePrompt.trim() || p.text.trim(),
+        imageUrl: p.imageUrl,
+      }));
+      scriptMode = "ai";
+    } else {
+      const script = await generateStoryScript({
+        contentType: body.contentType || "narrativo",
+        bookFormat: body.bookFormat || "mini",
+        styleId,
+        language,
+        characters: updatedCharacters,
+        idea: body.idea!.trim(),
+        dedication: finalDedication,
+        requestedPages: body.requestedPages,
+      });
+      finalTitle = finalTitle || script.title;
+      finalDedication = finalDedication || script.dedication;
+      scriptPages = script.pages;
+      scriptMode = script.mode;
+      if (script.warning) warnings.push(script.warning);
+    }
 
     const pagesResult = await generateConsistentStoryPages({
-      pages: script.pages,
-      styleId: body.styleId || "watercolor",
-      baseCharacterUrl: baseIllustrationUrl,
+      pages: scriptPages,
+      styleId,
+      characters: updatedCharacters,
     });
+    if (pagesResult.warning) warnings.push(pagesResult.warning);
 
     const id = `cuento-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const story: Story = {
       id,
-      title: script.title,
-      dedication: script.dedication,
+      title: finalTitle,
+      dedication: finalDedication,
+      language,
       contentType: body.contentType || "narrativo",
       bookFormat: body.bookFormat || "mini",
-      styleId: body.styleId || "watercolor",
+      styleId,
       characters: updatedCharacters,
       pages: pagesResult.pages,
-      mode: script.mode === "ai" || pagesResult.mode === "ai" ? "ai" : "demo",
+      mode: scriptMode === "ai" && pagesResult.mode === "ai" ? "ai" : "demo",
+      aiWarning: warnings[0],
       createdAt: new Date().toISOString(),
     };
 

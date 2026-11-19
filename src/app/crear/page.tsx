@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,123 +12,169 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  Wand2,
 } from "lucide-react";
 import {
   BOOK_FORMATS,
   CONTENT_TYPES,
   ILLUSTRATION_STYLES,
-  STORY_TEMPLATES,
 } from "@/lib/catalog";
 import {
   BookFormat,
   CharacterInput,
+  CharacterProfile,
   ContentType,
   IllustrationStyleId,
+  StoryLanguage,
 } from "@/lib/types";
+
+interface DraftPage {
+  pageNumber: number;
+  text: string;
+  scenePrompt: string;
+}
 
 export default function CrearCuentoPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
+  const [language, setLanguage] = useState<StoryLanguage>("eu");
   const [contentType, setContentType] = useState<ContentType>("narrativo");
   const [bookFormat, setBookFormat] = useState<BookFormat>("mini");
   const [styleId, setStyleId] = useState<IllustrationStyleId>("watercolor");
 
-  const [characters, setCharacters] = useState<CharacterInput[]>([
-    {
-      id: "char-1",
-      name: "",
-      role: "Protagonista",
-      ageOrNote: "",
-    },
+  // Personajes guardados y seleccionados
+  const [savedCharacters, setSavedCharacters] = useState<CharacterProfile[]>([]);
+  const [selectedCharacters, setSelectedCharacters] = useState<CharacterInput[]>([]);
+  const [newCharName, setNewCharName] = useState("");
+  const [newCharRole, setNewCharRole] = useState("Protagonista");
+  const [newCharNote, setNewCharNote] = useState("");
+  const [newCharPhoto, setNewCharPhoto] = useState<string | undefined>(undefined);
+  const [addingChar, setAddingChar] = useState(false);
+
+  // Guion: "custom" (página a página) o "idea" (generado por IA)
+  const [scriptMode, setScriptMode] = useState<"custom" | "idea">("custom");
+  const [title, setTitle] = useState("");
+  const [dedication, setDedication] = useState("");
+  const [idea, setIdea] = useState("");
+  const [customPages, setCustomPages] = useState<DraftPage[]>([
+    { pageNumber: 1, text: "", scenePrompt: "" },
+    { pageNumber: 2, text: "", scenePrompt: "" },
+    { pageNumber: 3, text: "", scenePrompt: "" },
   ]);
 
-  const [idea, setIdea] = useState(STORY_TEMPLATES[0].idea);
-  const [dedication, setDedication] = useState("");
-  const [generatingChar, setGeneratingChar] = useState(false);
   const [generatingStory, setGeneratingStory] = useState(false);
-  const [charNotice, setCharNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const mainChar = characters[0];
+  useEffect(() => {
+    fetch("/api/characters")
+      .then((r) => r.json())
+      .then((data: { characters?: CharacterProfile[] }) => {
+        setSavedCharacters(data.characters || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleSavedCharacter = (c: CharacterProfile) => {
+    setSelectedCharacters((prev) => {
+      const exists = prev.some((item) => item.id === c.id);
+      if (exists) {
+        return prev.filter((item) => item.id !== c.id);
+      }
+      return [
+        ...prev,
+        {
+          id: c.id,
+          name: c.name,
+          role: c.role,
+          ageOrNote: c.ageOrNote,
+          photoDataUrl: c.photoDataUrl,
+          baseIllustrationUrl: c.baseIllustrationUrl,
+        },
+      ];
+    });
+  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : undefined;
-      setCharacters((prev) =>
-        prev.map((c, idx) => (idx === 0 ? { ...c, photoDataUrl: dataUrl } : c))
-      );
+      if (typeof reader.result === "string") setNewCharPhoto(reader.result);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleGenerateBasePortrait = async () => {
+  const handleQuickAddCharacter = async () => {
+    if (!newCharName.trim()) return;
+    setAddingChar(true);
     setErrorMsg(null);
-    if (!mainChar.name.trim()) {
-      setErrorMsg("Escribe primero el nombre del protagonista.");
-      return;
-    }
-    setGeneratingChar(true);
     try {
-      const res = await fetch("/api/characters/generate", {
+      const res = await fetch("/api/characters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: mainChar.name,
-          ageOrNote: mainChar.ageOrNote,
+          name: newCharName.trim(),
+          role: newCharRole.trim() || "Protagonista",
+          ageOrNote: newCharNote.trim(),
           styleId,
-          photoDataUrl: mainChar.photoDataUrl,
+          photoDataUrl: newCharPhoto,
+          saveToLibrary: true,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error generando personaje");
-
-      setCharacters((prev) =>
-        prev.map((c, idx) =>
-          idx === 0 ? { ...c, baseIllustrationUrl: data.illustrationUrl } : c
-        )
-      );
-      setCharNotice(
-        data.mode === "ai"
-          ? `Retrato base consistente generado con ${data.providerInfo}.`
-          : `Vista previa lista (${data.providerInfo}).`
-      );
+      const data = (await res.json()) as { character?: CharacterProfile; error?: string };
+      if (!res.ok || !data.character) throw new Error(data.error || "Error creando personaje");
+      const created = data.character;
+      setSavedCharacters((prev) => [created, ...prev]);
+      setSelectedCharacters((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          name: created.name,
+          role: created.role,
+          ageOrNote: created.ageOrNote,
+          photoDataUrl: created.photoDataUrl,
+          baseIllustrationUrl: created.baseIllustrationUrl,
+        },
+      ]);
+      setNewCharName("");
+      setNewCharNote("");
+      setNewCharPhoto(undefined);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Error inesperado");
+      setErrorMsg(err instanceof Error ? err.message : "No se pudo añadir el personaje");
     } finally {
-      setGeneratingChar(false);
+      setAddingChar(false);
     }
   };
 
-  const addExtraCharacter = () => {
-    if (characters.length >= 4) return;
-    setCharacters((prev) => [
+  const addCustomPage = () => {
+    setCustomPages((prev) => [
       ...prev,
-      {
-        id: `char-${Date.now()}`,
-        name: "",
-        role: "Acompañante",
-        ageOrNote: "",
-      },
+      { pageNumber: prev.length + 1, text: "", scenePrompt: "" },
     ]);
   };
 
-  const removeCharacter = (id: string) => {
-    setCharacters((prev) => prev.filter((c) => c.id !== id));
+  const removeCustomPage = (idx: number) => {
+    if (customPages.length <= 1) return;
+    setCustomPages((prev) =>
+      prev.filter((_, i) => i !== idx).map((p, i) => ({ ...p, pageNumber: i + 1 }))
+    );
   };
 
   const handleCreateStory = async () => {
     setErrorMsg(null);
-    if (!mainChar.name.trim()) {
-      setErrorMsg("Por favor, indica el nombre del protagonista.");
+    if (selectedCharacters.length === 0) {
+      setErrorMsg("Selecciona o crea al menos un personaje en el Paso 3.");
       return;
     }
-    if (!idea.trim()) {
-      setErrorMsg("Por favor, describe una idea o selecciona una plantilla.");
+
+    if (scriptMode === "custom") {
+      const validPages = customPages.filter((p) => p.text.trim() || p.scenePrompt.trim());
+      if (validPages.length === 0) {
+        setErrorMsg("Escribe al menos una página de tu guion.");
+        return;
+      }
+    } else if (!idea.trim()) {
+      setErrorMsg("Escribe la idea o argumento del cuento.");
       return;
     }
 
@@ -137,12 +184,24 @@ export default function CrearCuentoPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title: title.trim() || undefined,
+          dedication: dedication.trim() || undefined,
+          language,
           contentType,
           bookFormat,
           styleId,
-          characters: characters.filter((c) => c.name.trim()),
-          idea,
-          dedication,
+          characters: selectedCharacters,
+          idea: scriptMode === "idea" ? idea.trim() : undefined,
+          customPages:
+            scriptMode === "custom"
+              ? customPages
+                  .filter((p) => p.text.trim() || p.scenePrompt.trim())
+                  .map((p, idx) => ({
+                    pageNumber: idx + 1,
+                    text: p.text.trim(),
+                    scenePrompt: p.scenePrompt.trim() || p.text.trim(),
+                  }))
+              : undefined,
         }),
       });
       const data = await res.json();
@@ -158,20 +217,20 @@ export default function CrearCuentoPage() {
     <div className="container wizard-shell">
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", marginBottom: 8 }}>
-          Personaliza tu cuento ilustrado
+          Crear un nuevo cuento
         </h1>
         <p style={{ color: "var(--ink-muted)" }}>
-          Configura el tipo, formato, estilo visual y protagonista en 4 pasos sencillos.
+          Elige tus personajes, selecciona el estilo y mete tu propio guion o una idea.
         </p>
       </div>
 
       {/* Stepper */}
       <div className="stepper" role="tablist">
         {[
-          { num: 1, label: "Tipo" },
-          { num: 2, label: "Formato" },
-          { num: 3, label: "Estilo" },
-          { num: 4, label: "Protagonista e Idea" },
+          { num: 1, label: "Idioma y Formato" },
+          { num: 2, label: "Estilo" },
+          { num: 3, label: `Personajes (${selectedCharacters.length})` },
+          { num: 4, label: "Guion" },
         ].map((item) => {
           const isActive = step === item.num;
           const isDone = step > item.num;
@@ -192,15 +251,43 @@ export default function CrearCuentoPage() {
       </div>
 
       <div className="wizard-panel">
+        {errorMsg && (
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: "var(--radius-sm)",
+              background: "#fde8e4",
+              color: "#8f2612",
+              marginBottom: 18,
+              fontSize: "0.92rem",
+            }}
+          >
+            {errorMsg}
+          </div>
+        )}
+
         {step === 1 && (
           <div>
-            <h2 style={{ fontSize: "1.6rem", marginBottom: 6 }}>
-              1. ¿Qué tipo de cuento quieres crear?
+            <h2 style={{ fontSize: "1.5rem", marginBottom: 14 }}>
+              1. Idioma, tipo y formato
             </h2>
-            <p style={{ color: "var(--ink-muted)" }}>
-              Adaptamos el tono narrativo y el vocabulario según tu elección.
-            </p>
 
+            <div className="field" style={{ maxWidth: 340 }}>
+              <label htmlFor="story-lang">Idioma del cuento</label>
+              <select
+                id="story-lang"
+                className="input"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as StoryLanguage)}
+              >
+                <option value="eu">Euskera</option>
+                <option value="es">Español</option>
+                <option value="en">English</option>
+                <option value="fr">Français</option>
+              </select>
+            </div>
+
+            <h3 style={{ fontSize: "1.15rem", marginTop: 20 }}>Tipo de historia</h3>
             <div className="option-grid">
               {CONTENT_TYPES.map((item) => (
                 <button
@@ -210,25 +297,15 @@ export default function CrearCuentoPage() {
                   onClick={() => setContentType(item.id)}
                 >
                   <span className="tag">{item.subtitle}</span>
-                  <h3 style={{ fontSize: "1.2rem", marginBottom: 6 }}>{item.title}</h3>
-                  <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
+                  <h4 style={{ fontSize: "1.15rem", marginBottom: 6 }}>{item.title}</h4>
+                  <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
                     {item.description}
                   </p>
                 </button>
               ))}
             </div>
-          </div>
-        )}
 
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontSize: "1.6rem", marginBottom: 6 }}>
-              2. Elige el formato del libro
-            </h2>
-            <p style={{ color: "var(--ink-muted)" }}>
-              Define la extensión de texto y el tamaño de letra ideal para el lector.
-            </p>
-
+            <h3 style={{ fontSize: "1.15rem", marginTop: 12 }}>Formato del libro</h3>
             <div className="option-grid">
               {BOOK_FORMATS.map((fmt) => (
                 <button
@@ -238,26 +315,23 @@ export default function CrearCuentoPage() {
                   onClick={() => setBookFormat(fmt.id)}
                 >
                   <span className="tag">{fmt.ageRange}</span>
-                  <h3 style={{ fontSize: "1.2rem", marginBottom: 6 }}>{fmt.title}</h3>
-                  <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
+                  <h4 style={{ fontSize: "1.15rem", marginBottom: 6 }}>{fmt.title}</h4>
+                  <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
                     {fmt.description}
                   </p>
-                  <div style={{ marginTop: 10, fontSize: "0.85rem", fontWeight: 600 }}>
-                    {fmt.defaultPages} páginas ilustradas
-                  </div>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <div>
-            <h2 style={{ fontSize: "1.6rem", marginBottom: 6 }}>
-              3. Selecciona el estilo de ilustración
+            <h2 style={{ fontSize: "1.5rem", marginBottom: 6 }}>
+              2. Elige el estilo de ilustración
             </h2>
             <p style={{ color: "var(--ink-muted)" }}>
-              Este estilo se aplicará primero al retrato base y luego a todas las páginas.
+              Todas las páginas seguirán este mismo estilo visual.
             </p>
 
             <div className="option-grid">
@@ -280,261 +354,278 @@ export default function CrearCuentoPage() {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <div>
-            <h2 style={{ fontSize: "1.6rem", marginBottom: 6 }}>
-              4. Protagonista, foto e historia
-            </h2>
-            <p style={{ color: "var(--ink-muted)", marginBottom: 22 }}>
-              Sube una foto para generar el retrato base consistente y cuéntanos de qué trata
-              el cuento.
-            </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <h2 style={{ fontSize: "1.5rem", marginBottom: 4 }}>
+                  3. Selecciona o añade tus personajes
+                </h2>
+                <p style={{ color: "var(--ink-muted)" }}>
+                  Haz clic en tus personajes guardados para incluirlos en este cuento.
+                </p>
+              </div>
+              <Link href="/personajes" className="btn btn-secondary btn-sm">
+                Editar biblioteca de personajes
+              </Link>
+            </div>
 
-            {errorMsg && (
-              <div
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: "var(--radius-sm)",
-                  background: "#fde8e4",
-                  color: "#8f2612",
-                  marginBottom: 18,
-                  fontSize: "0.92rem",
-                }}
-              >
-                {errorMsg}
+            {savedCharacters.length > 0 && (
+              <div className="option-grid">
+                {savedCharacters.map((c) => {
+                  const isSelected = selectedCharacters.some((s) => s.id === c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`option-card ${isSelected ? "selected" : ""}`}
+                      onClick={() => toggleSavedCharacter(c)}
+                    >
+                      <img
+                        src={c.baseIllustrationUrl || c.photoDataUrl || "/images/char-base.jpg"}
+                        alt={c.name}
+                        className="style-thumb"
+                      />
+                      <span className="tag">{isSelected ? "Seleccionado ✓" : c.role}</span>
+                      <h3 style={{ fontSize: "1.15rem", marginBottom: 4 }}>{c.name}</h3>
+                      <p style={{ color: "var(--ink-muted)", fontSize: "0.85rem" }}>
+                        {c.ageOrNote || c.role}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             )}
 
-            {charNotice && <div className="notice-banner">{charNotice}</div>}
-
-            <div className="form-grid">
-              <div>
-                <div className="field">
-                  <label htmlFor="char-name">Nombre del protagonista *</label>
-                  <input
-                    id="char-name"
-                    className="input"
-                    placeholder="Ej. Sofía, Mateo, Abuela Carmen..."
-                    value={mainChar.name}
-                    onChange={(e) =>
-                      setCharacters((prev) =>
-                        prev.map((c, idx) =>
-                          idx === 0 ? { ...c, name: e.target.value } : c
-                        )
-                      )
-                    }
-                  />
+            {/* Añadir personaje rápido */}
+            <div
+              style={{
+                marginTop: 24,
+                padding: 20,
+                borderRadius: "var(--radius-md)",
+                background: "var(--bg-cream)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <h3 style={{ fontSize: "1.15rem", marginBottom: 14 }}>
+                + Añadir un personaje nuevo (se guarda en tu biblioteca)
+              </h3>
+              <div className="form-grid">
+                <div>
+                  <div className="field">
+                    <label>Nombre</label>
+                    <input
+                      className="input"
+                      placeholder="Ej. Unai, Amatxo, Astotxoa..."
+                      value={newCharName}
+                      onChange={(e) => setNewCharName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Rol</label>
+                    <input
+                      className="input"
+                      placeholder="Ej. Protagonista, Acompañante..."
+                      value={newCharRole}
+                      onChange={(e) => setNewCharRole(e.target.value)}
+                    />
+                  </div>
                 </div>
-
-                <div className="field">
-                  <label htmlFor="char-note">Edad y rasgos (pelo, gafas, ropa)</label>
-                  <input
-                    id="char-note"
-                    className="input"
-                    placeholder="Ej. 6 años, pelo rizado castaño, jersey amarillo"
-                    value={mainChar.ageOrNote}
-                    onChange={(e) =>
-                      setCharacters((prev) =>
-                        prev.map((c, idx) =>
-                          idx === 0 ? { ...c, ageOrNote: e.target.value } : c
-                        )
-                      )
-                    }
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Foto de referencia (opcional)</label>
-                  <label className="upload-zone" htmlFor="photo-upload">
-                    {mainChar.photoDataUrl ? (
-                      <img
-                        src={mainChar.photoDataUrl}
-                        alt="Foto subida"
-                        className="upload-preview"
+                <div>
+                  <div className="field">
+                    <label>Rasgos físicos / ropa</label>
+                    <input
+                      className="input"
+                      placeholder="Ej. 4 años, pelo rubio, txapela y jersey azul"
+                      value={newCharNote}
+                      onChange={(e) => setNewCharNote(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Foto opcional</label>
+                    <label className="upload-zone" htmlFor="wizard-char-photo" style={{ padding: 12 }}>
+                      {newCharPhoto ? (
+                        <img src={newCharPhoto} alt="Foto" className="upload-preview" style={{ width: 48, height: 48 }} />
+                      ) : (
+                        <Upload size={20} color="var(--accent)" />
+                      )}
+                      <span style={{ fontSize: "0.88rem" }}>
+                        {newCharPhoto ? "Foto lista" : "Subir foto"}
+                      </span>
+                      <input
+                        id="wizard-char-photo"
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={handlePhotoUpload}
                       />
-                    ) : (
-                      <Upload size={26} color="var(--accent)" />
-                    )}
-                    <div>
-                      <strong>
-                        {mainChar.photoDataUrl
-                          ? "Foto cargada correctamente"
-                          : "Haz clic para subir una foto"}
-                      </strong>
-                      <div style={{ fontSize: "0.84rem", color: "var(--ink-muted)" }}>
-                        Se transforma en retrato ilustrado para mantener consistencia.
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-forest btn-sm"
+                disabled={addingChar || !newCharName.trim()}
+                onClick={handleQuickAddCharacter}
+              >
+                {addingChar ? <Loader2 size={15} /> : <Plus size={15} />}
+                {addingChar ? "Guardando..." : "Guardar y añadir al cuento"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div>
+            <h2 style={{ fontSize: "1.5rem", marginBottom: 6 }}>
+              4. Guion del cuento
+            </h2>
+            <p style={{ color: "var(--ink-muted)", marginBottom: 18 }}>
+              Puedes introducir tu propio guion página a página o escribir una idea para que la
+              IA redacte el borrador.
+            </p>
+
+            {/* Selector de modo de guion */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${scriptMode === "custom" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setScriptMode("custom")}
+              >
+                Escribir mi propio guion página a página
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${scriptMode === "idea" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setScriptMode("idea")}
+              >
+                Generar guion desde una idea
+              </button>
+            </div>
+
+            <div className="form-grid" style={{ marginBottom: 16 }}>
+              <div className="field">
+                <label htmlFor="story-title">Título del cuento</label>
+                <input
+                  id="story-title"
+                  className="input"
+                  placeholder="Ej. Lukas eta Olentzeroren Gurdi Magikoa"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="story-dedication">Dedicatoria</label>
+                <input
+                  id="story-dedication"
+                  className="input"
+                  placeholder="Ej. Nire semearentzat, maitasun osoz."
+                  value={dedication}
+                  onChange={(e) => setDedication(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {scriptMode === "custom" ? (
+              <div>
+                {customPages.map((p, idx) => (
+                  <div
+                    key={p.pageNumber}
+                    style={{
+                      padding: 18,
+                      borderRadius: "var(--radius-md)",
+                      background: "var(--bg-cream)",
+                      border: "1px solid var(--border)",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <strong>Página {p.pageNumber}</strong>
+                      {customPages.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => removeCustomPage(idx)}
+                        >
+                          <Trash2 size={14} /> Quitar
+                        </button>
+                      )}
+                    </div>
+                    <div className="form-grid">
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Texto que aparecerá en el libro</label>
+                        <textarea
+                          rows={3}
+                          className="textarea"
+                          placeholder="Ej. Hau Lukas da! Basozain gazte eta oso alai bat..."
+                          value={p.text}
+                          onChange={(e) =>
+                            setCustomPages((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, text: e.target.value } : item
+                              )
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Descripción visual de la escena (para la ilustración)</label>
+                        <textarea
+                          rows={3}
+                          className="textarea"
+                          placeholder="Ej. Lukas con ropa verde y txapela saludando en el bosque nevado con su caserío detrás."
+                          value={p.scenePrompt}
+                          onChange={(e) =>
+                            setCustomPages((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, scenePrompt: e.target.value } : item
+                              )
+                            )
+                          }
+                        />
                       </div>
                     </div>
-                    <input
-                      id="photo-upload"
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={handlePhotoUpload}
-                    />
-                  </label>
-                </div>
+                  </div>
+                ))}
 
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={handleGenerateBasePortrait}
-                  disabled={generatingChar}
+                  onClick={addCustomPage}
                 >
-                  {generatingChar ? (
-                    <Loader2 size={16} />
-                  ) : (
-                    <Wand2 size={16} />
-                  )}
-                  {generatingChar
-                    ? "Generando retrato base..."
-                    : "Previsualizar retrato base consistente"}
+                  <Plus size={15} /> Añadir página
                 </button>
-
-                {mainChar.baseIllustrationUrl && (
-                  <div
-                    style={{
-                      marginTop: 16,
-                      padding: 12,
-                      borderRadius: "var(--radius-sm)",
-                      background: "var(--bg-cream)",
-                      border: "1px solid var(--border)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 14,
-                    }}
-                  >
-                    <img
-                      src={mainChar.baseIllustrationUrl}
-                      alt="Retrato base consistente"
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: 10,
-                        objectFit: "cover",
-                      }}
-                    />
-                    <div style={{ fontSize: "0.86rem" }}>
-                      <strong>Personaje base listo</strong>
-                      <div style={{ color: "var(--ink-muted)" }}>
-                        Esta ilustración se usará como referencia en cada página.
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-
-              <div>
-                <div className="field">
-                  <label>Plantillas Súper Rápidas (clic para usar)</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {STORY_TEMPLATES.map((tpl) => (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setIdea(tpl.idea)}
-                      >
-                        {tpl.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label htmlFor="story-idea">Tu idea o argumento *</label>
-                  <textarea
-                    id="story-idea"
-                    rows={4}
-                    className="textarea"
-                    value={idea}
-                    onChange={(e) => setIdea(e.target.value)}
-                    placeholder="Describe qué aventura quieres que viva el protagonista..."
-                  />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="story-dedication">Dedicatoria en la primera página</label>
-                  <input
-                    id="story-dedication"
-                    className="input"
-                    value={dedication}
-                    onChange={(e) => setDedication(e.target.value)}
-                    placeholder="Ej. Para Sofía, en tu sexto cumpleaños. Con todo nuestro cariño."
-                  />
-                </div>
-
-                {/* Personajes extra */}
-                <div style={{ marginTop: 12 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                      Acompañantes o mascotas ({characters.length - 1}/3)
-                    </span>
-                    {characters.length < 4 && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={addExtraCharacter}
-                      >
-                        <Plus size={14} /> Añadir
-                      </button>
-                    )}
-                  </div>
-
-                  {characters.slice(1).map((extra) => (
-                    <div
-                      key={extra.id}
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        marginBottom: 8,
-                        alignItems: "center",
-                      }}
-                    >
-                      <input
-                        className="input"
-                        placeholder="Nombre (ej. Toby)"
-                        value={extra.name}
-                        onChange={(e) =>
-                          setCharacters((prev) =>
-                            prev.map((c) =>
-                              c.id === extra.id ? { ...c, name: e.target.value } : c
-                            )
-                          )
-                        }
-                      />
-                      <input
-                        className="input"
-                        placeholder="Rol (ej. Perrito)"
-                        value={extra.role}
-                        onChange={(e) =>
-                          setCharacters((prev) =>
-                            prev.map((c) =>
-                              c.id === extra.id ? { ...c, role: e.target.value } : c
-                            )
-                          )
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => removeCharacter(extra.id)}
-                        aria-label="Eliminar personaje"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            ) : (
+              <div className="field">
+                <label htmlFor="story-idea">Tu idea o argumento *</label>
+                <textarea
+                  id="story-idea"
+                  rows={5}
+                  className="textarea"
+                  value={idea}
+                  onChange={(e) => setIdea(e.target.value)}
+                  placeholder="Describe qué aventura quieres que vivan tus personajes..."
+                />
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -565,7 +656,7 @@ export default function CrearCuentoPage() {
               onClick={handleCreateStory}
             >
               {generatingStory ? <Loader2 size={18} /> : <Sparkles size={18} />}
-              {generatingStory ? "Creando tu cuento..." : "Crear cuento ilustrado"}
+              {generatingStory ? "Creando cuento..." : "Crear cuento"}
             </button>
           )}
         </div>

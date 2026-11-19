@@ -7,20 +7,35 @@ import {
   ArrowRight,
   Check,
   Edit3,
+  Loader2,
   Printer,
   Square,
+  Upload,
   Volume2,
+  Wand2,
 } from "lucide-react";
 import { Story } from "@/lib/types";
 
+const SPEECH_LANG: Record<string, string> = {
+  eu: "eu-ES",
+  es: "es-ES",
+  en: "en-US",
+  fr: "fr-FR",
+};
+
 export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
   const [story, setStory] = useState<Story>(initialStory);
-  const [currentIndex, setCurrentIndex] = useState(0); // 0 = portada/dedicatoria, 1..N = páginas
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(initialStory.title);
   const [draftDedication, setDraftDedication] = useState(initialStory.dedication);
   const [draftPageText, setDraftPageText] = useState("");
+  const [draftScenePrompt, setDraftScenePrompt] = useState("");
   const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(
+    initialStory.aiWarning || null
+  );
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const totalViews = story.pages.length + 1;
@@ -29,6 +44,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
   useEffect(() => {
     if (activePage) {
       setDraftPageText(activePage.text);
+      setDraftScenePrompt(activePage.scenePrompt);
     }
   }, [activePage]);
 
@@ -62,7 +78,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     }
 
     const utterance = new SpeechSynthesisUtterance(textToRead);
-    utterance.lang = "es-ES";
+    utterance.lang = SPEECH_LANG[story.language || "es"] || "es-ES";
     utterance.rate = 0.96;
     utterance.onend = () => {
       if (index + 1 < totalViews) {
@@ -86,13 +102,21 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     }
   };
 
-  const handleSaveEdit = async () => {
-    setSaving(true);
+  const handleSaveEdit = async (regenerateImage = false) => {
+    if (regenerateImage) setRegenerating(true);
+    else setSaving(true);
+    setActionNotice(null);
+
     try {
       const payload =
         currentIndex === 0
           ? { title: draftTitle, dedication: draftDedication }
-          : { pageNumber: activePage?.pageNumber, text: draftPageText };
+          : {
+              pageNumber: activePage?.pageNumber,
+              text: draftPageText,
+              scenePrompt: draftScenePrompt,
+              regenerateImage,
+            };
 
       const res = await fetch(`/api/stories/${story.id}`, {
         method: "PATCH",
@@ -100,13 +124,40 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        const data = (await res.json()) as { story: Story };
+        const data = (await res.json()) as { story: Story; warning?: string };
         setStory(data.story);
-        setIsEditing(false);
+        if (data.warning) {
+          setActionNotice(data.warning);
+        } else {
+          setIsEditing(false);
+        }
       }
     } finally {
       setSaving(false);
+      setRegenerating(false);
     }
+  };
+
+  const handleUploadPageImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePage) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (typeof reader.result !== "string") return;
+      const res = await fetch(`/api/stories/${story.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageNumber: activePage.pageNumber,
+          imageUrl: reader.result,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { story: Story };
+        setStory(data.story);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const coverImage =
@@ -116,11 +167,9 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
 
   return (
     <div className="container reader-shell">
-      {story.mode === "demo" && (
+      {actionNotice && (
         <div className="notice-banner no-print">
-          <strong>Modo Demo activo:</strong> Este cuento usa ilustraciones de demostración.
-          Para generar imágenes reales de tu foto y guiones personalizados con IA, añade tu{" "}
-          <code>GEMINI_API_KEY</code> en <code>.env.local</code>.
+          <strong>Aviso:</strong> {actionNotice}
         </div>
       )}
 
@@ -153,7 +202,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             onClick={() => setIsEditing((v) => !v)}
           >
             <Edit3 size={15} />
-            {isEditing ? "Cancelar edición" : "Editar página"}
+            {isEditing ? "Cerrar editor" : "Editar página"}
           </button>
 
           <button
@@ -162,7 +211,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
             onClick={() => window.print()}
           >
             <Printer size={15} />
-            Descargar / Imprimir PDF
+            Imprimir / PDF
           </button>
         </div>
       </div>
@@ -183,7 +232,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
         <div className="book-page-right">
           {currentIndex === 0 ? (
             <div>
-              <span className="tag">Edición personalizada</span>
+              <span className="tag">Portada</span>
               {isEditing ? (
                 <div>
                   <div className="field">
@@ -206,7 +255,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
-                    onClick={handleSaveEdit}
+                    onClick={() => handleSaveEdit(false)}
                     disabled={saving}
                   >
                     <Check size={15} /> {saving ? "Guardando..." : "Guardar cambios"}
@@ -244,20 +293,49 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                   <div className="field">
                     <label>Texto de la página {activePage?.pageNumber}</label>
                     <textarea
-                      rows={6}
+                      rows={4}
                       className="textarea"
                       value={draftPageText}
                       onChange={(e) => setDraftPageText(e.target.value)}
                     />
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSaveEdit}
-                    disabled={saving}
-                  >
-                    <Check size={15} /> {saving ? "Guardando..." : "Guardar página"}
-                  </button>
+                  <div className="field">
+                    <label>Descripción visual de la escena (prompt)</label>
+                    <textarea
+                      rows={3}
+                      className="textarea"
+                      value={draftScenePrompt}
+                      onChange={(e) => setDraftScenePrompt(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleSaveEdit(false)}
+                      disabled={saving || regenerating}
+                    >
+                      <Check size={15} /> {saving ? "Guardando..." : "Guardar texto"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-forest btn-sm"
+                      onClick={() => handleSaveEdit(true)}
+                      disabled={saving || regenerating}
+                    >
+                      {regenerating ? <Loader2 size={15} /> : <Wand2 size={15} />}
+                      {regenerating ? "Regenerando..." : "Regenerar ilustración"}
+                    </button>
+                    <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
+                      <Upload size={15} /> Subir imagen propia
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={handleUploadPageImage}
+                      />
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <p className="book-story-text">{activePage?.text}</p>
@@ -277,7 +355,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                 setCurrentIndex((i) => Math.max(0, i - 1));
               }}
             >
-              <ArrowLeft size={16} /> Página anterior
+              <ArrowLeft size={16} /> Anterior
             </button>
 
             <span style={{ fontSize: "0.85rem", color: "var(--ink-muted)" }}>
@@ -294,7 +372,7 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
                 setCurrentIndex((i) => Math.min(totalViews - 1, i + 1));
               }}
             >
-              Siguiente página <ArrowRight size={16} />
+              Siguiente <ArrowRight size={16} />
             </button>
           </div>
         </div>

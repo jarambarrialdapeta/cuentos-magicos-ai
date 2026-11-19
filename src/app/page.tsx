@@ -2,11 +2,10 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookOpen,
-  CheckCircle2,
   Edit3,
   Printer,
-  ShieldCheck,
   Sparkles,
+  Users,
   Volume2,
 } from "lucide-react";
 import { ILLUSTRATION_STYLES } from "@/lib/catalog";
@@ -14,168 +13,132 @@ import { ILLUSTRATION_STYLES } from "@/lib/catalog";
 export default function HomePage() {
   return (
     <>
-      {/* Hero */}
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <span className="hero-eyebrow">Cuentos ilustrados a medida</span>
+            <span className="hero-eyebrow">Taller personal de cuentos</span>
             <h1>
-              Convierte a tus personas favoritas en protagonistas de su propio cuento
+              Crea tus propios cuentos ilustrados con tus personajes y tus guiones
             </h1>
             <p className="hero-lead">
-              Sube una foto, elige el estilo de ilustración y en minutos tendrás un libro
-              completo con personajes consistentes página a página, listo para leer, escuchar
-              narrado o imprimir en PDF.
+              Guarda a tu hijo, familiares o mascotas como personajes reutilizables, escribe tu
+              propio guion página a página (en euskera, español o el idioma que elijas), edita
+              cada escena e imprime el libro en PDF.
             </p>
 
             <div className="hero-cta-row">
               <Link href="/crear" id="hero-cta-create" className="btn btn-primary btn-lg">
                 <Sparkles size={18} />
-                Crear mi primer cuento gratis
+                Crear un cuento ahora
               </Link>
-              <Link href="/ejemplos" id="hero-cta-examples" className="btn btn-secondary btn-lg">
-                Ver ejemplos ilustrados
+              <Link href="/personajes" id="hero-cta-chars" className="btn btn-secondary btn-lg">
+                <Users size={18} />
+                Gestionar personajes
               </Link>
             </div>
 
             <div className="hero-trust">
-              <span>
-                <CheckCircle2 size={16} color="var(--forest)" /> Sin tarjeta para empezar
-              </span>
-              <span>
-                <ShieldCheck size={16} color="var(--forest)" /> Consistencia facial garantizada
-              </span>
-              <span>
-                <Volume2 size={16} color="var(--forest)" /> Incluye audio narración
-              </span>
+              <span>Sin suscripciones ni pagos</span>
+              <span>Guion propio o asistido</span>
+              <span>Edición página a página</span>
             </div>
           </div>
 
           <div className="hero-visual">
             <img
-              src="/images/hero-storybook.jpg"
-              alt="Libro ilustrado personalizado abierto sobre una mesa de madera"
+              src="/images/lukas-olentzero/azala.jpg"
+              alt="Lukas eta Olentzeroren Gurdi Magikoa"
               width={960}
-              height={720}
+              height={960}
             />
             <div className="hero-caption">
               <div>
-                <strong>Misma cara, infinitas aventuras</strong>
+                <strong>Lukas eta Olentzeroren Gurdi Magikoa</strong>
                 <div style={{ color: "var(--ink-muted)", fontSize: "0.82rem" }}>
-                  Acuarela, 3D, Gouache y Cuento Clásico
+                  Cuento en euskera creado con personajes consistentes
                 </div>
               </div>
-              <Link href="/cuento/ejemplo-lucia-bosque" className="btn btn-forest btn-sm">
-                Leer ejemplo
+              <Link href="/cuento/ejemplo-lukas-olentzero" className="btn btn-forest btn-sm">
+                Leer ahora
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Tres mundos */}
+      {/* Flujo del taller */}
       <section className="section section-warm">
         <div className="container">
           <div className="section-header">
-            <h2>Tres mundos distintos. Mismo protagonista.</h2>
+            <h2>Tu proceso creativo en 3 pasos</h2>
             <p>
-              Elige el enfoque perfecto según la edad y la ocasión: desde aventuras antes de
-              dormir hasta regalos de cumpleaños o recuerdos familiares.
+              Pensado para uso personal: diseña tus personajes una vez y úsalos en todas las
+              historias que quieras crear para tu hijo.
             </p>
           </div>
 
           <div className="grid-3">
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/style-classic.jpg" alt="Cuento infantil de piratas" />
+                <img src="/images/char-base.jpg" alt="Personaje base consistente" />
               </div>
-              <span className="tag">Infantil · Recreativo</span>
-              <h3 style={{ fontSize: "1.4rem", marginBottom: 8 }}>Aventuras y magia</h3>
-              <p style={{ color: "var(--ink-muted)" }}>
-                Piratas, exploradores, dinosaurios o superhéroes con su rostro y su nombre en
-                cada escena del libro.
+              <span className="tag">1 · Personajes</span>
+              <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
+                Crea y edita personas reales
+              </h3>
+              <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
+                Sube una foto o describe rasgos físicos, genera su retrato base y edítalo cuando
+                quieras.
               </p>
+              <Link href="/personajes" className="btn btn-secondary btn-sm">
+                Ir a Mis personajes <ArrowRight size={14} />
+              </Link>
             </article>
 
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/style-3d.jpg" alt="Cuento educativo espacial" />
+                <img src="/images/lukas-olentzero/p3.jpg" alt="Guion página a página" />
               </div>
-              <span className="tag">Educativo</span>
-              <h3 style={{ fontSize: "1.4rem", marginBottom: 8 }}>Aprende jugando</h3>
-              <p style={{ color: "var(--ink-muted)" }}>
-                Historias diseñadas para fomentar valores, emociones, lectura temprana, ciencia
-                y curiosidad escolar.
+              <span className="tag">2 · Guion y estilo</span>
+              <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
+                Mete tu propio guion o una idea
+              </h3>
+              <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
+                Escribe escena por escena lo que ocurre en cada página o deja que la IA redacte
+                el borrador.
               </p>
+              <Link href="/crear" className="btn btn-secondary btn-sm">
+                Abrir el creador <ArrowRight size={14} />
+              </Link>
             </article>
 
             <article className="card">
               <div className="card-image-wrap">
-                <img src="/images/style-watercolor.jpg" alt="Cuento ilustrado de recuerdos" />
+                <img src="/images/lukas-olentzero/p9.jpg" alt="Libro ilustrado terminado" />
               </div>
-              <span className="tag tag-accent">Adultos y Memorias</span>
-              <h3 style={{ fontSize: "1.4rem", marginBottom: 8 }}>Regalos inolvidables</h3>
-              <p style={{ color: "var(--ink-muted)" }}>
-                Convierte un viaje en pareja, una amistad o una historia real en un álbum
-                ilustrado único.
+              <span className="tag tag-accent">3 · Edita y lee</span>
+              <h3 style={{ fontSize: "1.35rem", marginBottom: 8 }}>
+                Ajusta cada página e imprime
+              </h3>
+              <p style={{ color: "var(--ink-muted)", marginBottom: 14 }}>
+                Modifica textos, regenera ilustraciones sueltas, escucha la narración o imprime en
+                PDF.
               </p>
+              <Link href="/mis-cuentos" className="btn btn-secondary btn-sm">
+                Ver biblioteca <ArrowRight size={14} />
+              </Link>
             </article>
-          </div>
-        </div>
-      </section>
-
-      {/* Arquitectura de consistencia */}
-      <section id="como-funciona" className="section">
-        <div className="container">
-          <div className="section-header">
-            <h2>Cómo mantenemos la cara consistente en todo el cuento</h2>
-            <p>
-              No generamos cada página desde cero. Primero creamos un retrato ilustrado base
-              y lo usamos como referencia visual en cada escena.
-            </p>
-          </div>
-
-          <div className="consistency-box">
-            <div className="consistency-step">
-              <span className="tag">Paso 1 · Retrato base (PuLID)</span>
-              <img
-                src="/images/char-base.jpg"
-                alt="Retrato ilustrado base del protagonista"
-              />
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.95rem" }}>
-                Transformamos la foto real en una hoja de personaje limpia en el estilo elegido,
-                fijando rasgos faciales, pelo y vestuario.
-              </p>
-            </div>
-
-            <div className="consistency-arrow">
-              <ArrowRight size={28} />
-              <span>Referencia fija página a página (Kontext)</span>
-            </div>
-
-            <div className="consistency-step">
-              <span className="tag tag-accent">Paso 2 · Escenas consistentes</span>
-              <img
-                src="/images/scene-treehouse.jpg"
-                alt="Escena completa del cuento manteniendo el mismo personaje"
-              />
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.95rem" }}>
-                Cada página coloca a ese mismo personaje dentro de la nueva acción junto a sus
-                acompañantes o mascotas.
-              </p>
-            </div>
           </div>
         </div>
       </section>
 
       {/* Estilos disponibles */}
-      <section className="section section-warm">
+      <section className="section">
         <div className="container">
           <div className="section-header">
-            <h2>Estilos de ilustración para cada historia</h2>
+            <h2>Estilos de ilustración disponibles</h2>
             <p>
-              Elige entre acuarela artesanal, animación 3D cinematográfica, tinta europea o
-              gouache nocturno.
+              Cambia el estilo visual de cualquier cuento o personaje en un clic.
             </p>
           </div>
 
@@ -196,52 +159,44 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Funcionalidades clave */}
-      <section id="precios" className="section">
+      {/* Herramientas */}
+      <section className="section section-warm">
         <div className="container">
-          <div className="section-header">
-            <h2>Todo lo que incluye tu cuento</h2>
-            <p>
-              Diseñado para que puedas crear, revisar, escuchar y descargar sin complicaciones.
-            </p>
-          </div>
-
           <div className="grid-4">
             <div className="card">
-              <BookOpen size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.15rem", marginBottom: 8 }}>Visor tipo libro</h3>
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
-                Lee a doble página con ilustración a la izquierda y tipografía editorial a la
-                derecha.
+              <Users size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Personajes editables</h3>
+              <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
+                Cambia nombre, ropa, descripción o foto en cualquier momento.
               </p>
             </div>
             <div className="card">
               <Edit3 size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.15rem", marginBottom: 8 }}>Edita página a página</h3>
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
-                Ajusta el título, la dedicatoria o cualquier párrafo en vivo sin empezar de cero.
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Guion libre</h3>
+              <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
+                Introduce tus propios textos y escenas en euskera, español, inglés o francés.
               </p>
             </div>
             <div className="card">
               <Volume2 size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.15rem", marginBottom: 8 }}>Audio narración</h3>
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
-                Escucha la historia narrada en español con paso automático de páginas.
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Narración en audio</h3>
+              <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
+                Reproduce el cuento en voz alta con paso automático de páginas.
               </p>
             </div>
             <div className="card">
               <Printer size={24} color="var(--accent)" style={{ marginBottom: 12 }} />
-              <h3 style={{ fontSize: "1.15rem", marginBottom: 8 }}>PDF imprimible</h3>
-              <p style={{ color: "var(--ink-muted)", fontSize: "0.92rem" }}>
-                Exporta e imprime el libro maquetado en un clic para regalar en papel.
+              <h3 style={{ fontSize: "1.1rem", marginBottom: 6 }}>Impresión PDF</h3>
+              <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>
+                Guarda o imprime el libro maquetado listo para leer en papel.
               </p>
             </div>
           </div>
 
-          <div style={{ textAlign: "center", marginTop: 48 }}>
+          <div style={{ textAlign: "center", marginTop: 40 }}>
             <Link href="/crear" className="btn btn-primary btn-lg">
-              <Sparkles size={18} />
-              Empezar a crear mi cuento ahora
+              <BookOpen size={18} />
+              Empezar un nuevo cuento
             </Link>
           </div>
         </div>

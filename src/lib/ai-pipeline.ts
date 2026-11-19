@@ -1,11 +1,26 @@
 import { BOOK_FORMATS, ILLUSTRATION_STYLES } from "./catalog";
-import { BookFormat, CharacterInput, ContentType, IllustrationStyleId, StoryPage } from "./types";
+import {
+  BookFormat,
+  CharacterInput,
+  ContentType,
+  IllustrationStyleId,
+  StoryLanguage,
+  StoryPage,
+} from "./types";
 
 interface GenerateCharacterResult {
   illustrationUrl: string;
   mode: "ai" | "demo";
   providerInfo: string;
+  warning?: string;
 }
+
+const LANGUAGE_LABELS: Record<StoryLanguage, string> = {
+  eu: "euskera (Basque)",
+  es: "español",
+  en: "English",
+  fr: "français",
+};
 
 function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
@@ -16,15 +31,15 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | nul
 async function callGeminiImage(params: {
   apiKey: string;
   prompt: string;
-  referenceImageDataUrl?: string;
-}): Promise<string | null> {
+  referenceImageDataUrls?: string[];
+}): Promise<{ imageUrl: string | null; error?: string }> {
   const parts: Array<
     | { text: string }
     | { inlineData: { mimeType: string; data: string } }
   > = [];
 
-  if (params.referenceImageDataUrl) {
-    const parsed = parseDataUrl(params.referenceImageDataUrl);
+  for (const ref of params.referenceImageDataUrls || []) {
+    const parsed = parseDataUrl(ref);
     if (parsed) {
       parts.push({
         inlineData: {
@@ -52,8 +67,16 @@ async function callGeminiImage(params: {
   );
 
   if (!res.ok) {
-    console.error("Gemini image error:", res.status, await res.text());
-    return null;
+    const errText = await res.text();
+    console.error("Gemini image error:", res.status, errText);
+    if (res.status === 429) {
+      return {
+        imageUrl: null,
+        error:
+          "Tu API Key de Gemini no tiene cuota de imágenes activa en el plan gratuito (error 429). Activa la facturación en Google AI Studio para generar ilustraciones reales.",
+      };
+    }
+    return { imageUrl: null, error: `Error Gemini Imagen (${res.status})` };
   }
 
   const json = (await res.json()) as {
@@ -67,16 +90,13 @@ async function callGeminiImage(params: {
   };
 
   const imagePart = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-  if (!imagePart?.inlineData?.data) return null;
+  if (!imagePart?.inlineData?.data) {
+    return { imageUrl: null, error: "Gemini no devolvió imagen en la respuesta." };
+  }
   const mime = imagePart.inlineData.mimeType || "image/png";
-  return `data:${mime};base64,${imagePart.inlineData.data}`;
+  return { imageUrl: `data:${mime};base64,${imagePart.inlineData.data}` };
 }
 
-/**
- * Paso 1 del pipeline de consistencia:
- * Convierte la foto real del usuario en un retrato ilustrado base (Character Sheet)
- * Prioridad: GEMINI_API_KEY (gemini-2.5-flash-image) -> FAL_KEY (flux-pulid) -> Demo.
- */
 export async function generateBaseCharacter(params: {
   name: string;
   ageOrNote: string;
@@ -85,7 +105,7 @@ export async function generateBaseCharacter(params: {
 }): Promise<GenerateCharacterResult> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const geminiKey = process.env.GEMINI_API_KEY;
-  const falKey = process.env.FAL_KEY;
+  let warning: string | undefined;
 
   if (geminiKey) {
     try {
@@ -93,87 +113,56 @@ export async function generateBaseCharacter(params: {
         ? `Transform the person in this reference photo into a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}). Keep their exact facial features, hair and likeness, centered upper body, warm friendly expression, ${style.promptModifier}.`
         : `Create a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}), centered upper body, warm friendly expression, ${style.promptModifier}.`;
 
-      const img = await callGeminiImage({
+      const { imageUrl, error } = await callGeminiImage({
         apiKey: geminiKey,
         prompt,
-        referenceImageDataUrl: params.photoDataUrl,
+        referenceImageDataUrls: params.photoDataUrl ? [params.photoDataUrl] : [],
       });
 
-      if (img) {
+      if (imageUrl) {
         return {
-          illustrationUrl: img,
+          illustrationUrl: imageUrl,
           mode: "ai",
           providerInfo: "Gemini (gemini-nano-banana-2.1)",
         };
       }
+      warning = error;
     } catch (err) {
-      console.error("Error calling Gemini image for character, trying fallback:", err);
-    }
-  }
-
-  if (falKey && params.photoDataUrl) {
-    try {
-      const prompt = `Character portrait sheet of ${params.name} (${params.ageOrNote || "child protagonist"}), centered upper body, friendly warm smile, ${style.promptModifier}`;
-      const res = await fetch("https://fal.run/fal-ai/flux-pulid", {
-        method: "POST",
-        headers: {
-          Authorization: `Key ${falKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt,
-          reference_image_url: params.photoDataUrl,
-          image_size: "square_hd",
-          id_weight: 1.0,
-          num_inference_steps: 20,
-        }),
-      });
-
-      if (res.ok) {
-        const data = (await res.json()) as { images?: { url: string }[] };
-        const url = data.images?.[0]?.url;
-        if (url) {
-          return {
-            illustrationUrl: url,
-            mode: "ai",
-            providerInfo: "fal-ai/flux-pulid",
-          };
-        }
-      }
-    } catch (err) {
-      console.error("Error calling fal-ai/flux-pulid, falling back to demo:", err);
+      warning = err instanceof Error ? err.message : "Error conectando con Gemini";
     }
   }
 
   return {
     illustrationUrl: style.previewImage || "/images/char-base.jpg",
     mode: "demo",
-    providerInfo: "Modo Demo (añade GEMINI_API_KEY en .env.local para generación real)",
+    providerInfo: "Modo Demo",
+    warning,
   };
 }
 
-/**
- * Paso 2: Genera el guion página por página.
- * Prioridad: GEMINI_API_KEY (gemini-2.5-flash) -> OPENAI_API_KEY -> Demo.
- */
 export async function generateStoryScript(params: {
   contentType: ContentType;
   bookFormat: BookFormat;
   styleId: IllustrationStyleId;
+  language: StoryLanguage;
   characters: CharacterInput[];
   idea: string;
   dedication?: string;
+  requestedPages?: number;
 }): Promise<{
   title: string;
   dedication: string;
   pages: { pageNumber: number; text: string; scenePrompt: string }[];
   mode: "ai" | "demo";
+  warning?: string;
 }> {
   const format = BOOK_FORMATS.find((f) => f.id === params.bookFormat) ?? BOOK_FORMATS[1];
+  const pageCount = params.requestedPages || format.defaultPages;
   const mainChar = params.characters[0];
   const companion = params.characters[1];
   const geminiKey = process.env.GEMINI_API_KEY;
-  const openAiKey = process.env.OPENAI_API_KEY;
+  const langLabel = LANGUAGE_LABELS[params.language] || "español";
+  let warning: string | undefined;
 
   const charDesc = params.characters
     .map((c) => `${c.name} (${c.role}${c.ageOrNote ? `, ${c.ageOrNote}` : ""})`)
@@ -181,14 +170,14 @@ export async function generateStoryScript(params: {
 
   if (geminiKey) {
     try {
-      const prompt = `Eres un escritor galardonado de literatura ilustrada. Escribe un cuento en español de exactamente ${format.defaultPages} páginas para formato "${format.title}" (${format.ageRange}) y categoría "${params.contentType}".
+      const prompt = `Eres un escritor galardonado de literatura ilustrada. Escribe un cuento íntegro en ${langLabel} de exactamente ${pageCount} páginas para formato "${format.title}" (${format.ageRange}) y categoría "${params.contentType}".
 Personajes: ${charDesc}.
-Idea de la historia: ${params.idea}.
-Dedicatoria sugerida: ${params.dedication || `Para ${mainChar.name}`}.
+Idea o argumento: ${params.idea}.
+Dedicatoria sugerida: ${params.dedication || mainChar.name}.
 
 Devuelve JSON válido con esta estructura exacta:
 {"title": string, "dedication": string, "pages": [{"pageNumber": number, "text": string, "scenePrompt": string}]}
-En scenePrompt describe la escena visual en inglés manteniendo exactamente la misma apariencia y vestuario de los personajes.`;
+IMPORTANTE: Todo el texto ("title", "dedication", "text") debe estar escrito en ${langLabel}. En "scenePrompt" describe la escena visual en inglés manteniendo exactamente la misma apariencia física y vestuario de cada personaje.`;
 
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiKey}`,
@@ -217,83 +206,72 @@ En scenePrompt describe la escena visual en inglés manteniendo exactamente la m
           };
           return { ...parsed, mode: "ai" };
         }
+      } else {
+        warning = `Gemini texto respondió ${res.status}`;
       }
     } catch (err) {
-      console.error("Gemini script error, trying fallback:", err);
+      warning = err instanceof Error ? err.message : "Error generando guion con Gemini";
     }
   }
 
-  if (openAiKey) {
-    try {
-      const systemPrompt = `Eres un escritor galardonado de literatura ilustrada. Escribe un cuento en español de exactamente ${format.defaultPages} páginas para formato "${format.title}" (${format.ageRange}) y categoría "${params.contentType}". Responde SOLO con JSON válido con la estructura: {"title": string, "dedication": string, "pages": [{"pageNumber": number, "text": string, "scenePrompt": string}]}. En scenePrompt describe la escena visual en inglés manteniendo exactamente la misma apariencia y vestuario de los personajes.`;
+  const companionText = companion
+    ? params.language === "eu"
+      ? ` ${companion.name}-rekin batera`
+      : ` junto a ${companion.name}`
+    : "";
 
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openAiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: `Personajes: ${charDesc}. Idea de la historia: ${params.idea}. Dedicatoria sugerida: ${params.dedication || `Para ${mainChar.name}`}.`,
-            },
-          ],
-        }),
-      });
+  const title =
+    params.language === "eu"
+      ? `${mainChar.name}-ren abentura magikoa`
+      : `La gran aventura de ${mainChar.name}`;
 
-      if (res.ok) {
-        const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-        const rawContent = json.choices?.[0]?.message?.content;
-        if (rawContent) {
-          const parsed = JSON.parse(rawContent) as {
-            title: string;
-            dedication: string;
-            pages: { pageNumber: number; text: string; scenePrompt: string }[];
-          };
-          return { ...parsed, mode: "ai" };
-        }
-      }
-    } catch (err) {
-      console.error("OpenAI error, using template script generator:", err);
-    }
-  }
-
-  const companionText = companion ? ` junto a ${companion.name}` : "";
-  const title = `La gran aventura de ${mainChar.name}`;
   const dedication =
     params.dedication?.trim() ||
-    `Para ${mainChar.name}, protagonista de esta historia y de muchas más por venir.`;
+    (params.language === "eu"
+      ? `${mainChar.name}-rentzat, beti ilusioz amesten jarrai dezazun.`
+      : `Para ${mainChar.name}, protagonista de esta historia.`);
 
-  const baseBeats = [
+  const beatsEu = [
     {
-      text: `Aquella mañana comenzó de forma distinta para ${mainChar.name}. Con la mochila lista y una gran sonrisa${companionText}, sabía que hoy le esperaba algo extraordinario.`,
-      scenePrompt: `${mainChar.name} preparing for an adventure with a warm smile, morning light`,
+      text: `Goiz hartan, ${mainChar.name} irribarretsu esnatu zen${companionText}. Bazekien abentura berezi bat hasteko eguna zela!`,
+      scenePrompt: `${mainChar.name} smiling warmly ready for an adventure in morning light`,
     },
     {
-      text: `Siguiendo la pista de su idea —"${params.idea.slice(0, 95)}"—, ${mainChar.name} cruzó un sendero antiguo donde cada paso parecía despertar un pequeño brillo en el aire.`,
-      scenePrompt: `${mainChar.name} walking across a mossy bridge toward a glowing village`,
+      text: `Ideia hau buruan hartuta —«${params.idea.slice(0, 80)}»—, ${mainChar.name} bidezidor magiko batera hurbildu zen.`,
+      scenePrompt: `${mainChar.name} walking along a magical forest path`,
     },
     {
-      text: `Pronto descubrió un rincón mágico lleno de farolillos y detalles escondidos. ${companion ? `${companion.name} miraba asombrado cada rincón mientras exploraban juntos.` : "Cada rincón guardaba una pista nueva por descubrir."}`,
-      scenePrompt: `${mainChar.name} discovering warm glowing lanterns in an enchanted forest`,
+      text: `Laster txoko zoragarri bat aurkitu zuen, argi txikiz eta ezustekoz betea.`,
+      scenePrompt: `${mainChar.name} discovering glowing lanterns in a cozy village`,
     },
     {
-      text: `En lo más alto del camino apareció el corazón de la aventura. ${mainChar.name} comprendió que la verdadera magia no estaba en el mapa, sino en atreverse a dar el primer paso.`,
-      scenePrompt: `${mainChar.name} looking through a brass telescope at a magical horizon`,
-    },
-    {
-      text: `De vuelta a casa bajo un cielo lleno de estrellas, ${mainChar.name}${companionText} guardó el recuerdo de aquel día como el tesoro más bonito de su estantería.`,
-      scenePrompt: `${mainChar.name} walking home under a starry sky with warm lantern light`,
+      text: `Ilunabarrean, izarren azpian, ${mainChar.name}${companionText} poz-pozik itzuli zen etxera oroitzapen ahaztezin batekin.`,
+      scenePrompt: `${mainChar.name} waving happily under a starry twilight sky`,
     },
   ];
 
-  const pages = Array.from({ length: format.defaultPages }, (_, i) => {
-    const beat = baseBeats[i % baseBeats.length];
+  const beatsEs = [
+    {
+      text: `Aquella mañana, ${mainChar.name} se levantó con una gran sonrisa${companionText}. ¡Sabía que le esperaba una aventura inolvidable!`,
+      scenePrompt: `${mainChar.name} smiling warmly ready for an adventure in morning light`,
+    },
+    {
+      text: `Con esta idea en mente —«${params.idea.slice(0, 80)}»—, ${mainChar.name} emprendió el camino con ilusión.`,
+      scenePrompt: `${mainChar.name} walking along a magical forest path`,
+    },
+    {
+      text: `Pronto descubrió un rincón mágico lleno de luz y pequeños detalles escondidos.`,
+      scenePrompt: `${mainChar.name} discovering glowing lanterns in a cozy village`,
+    },
+    {
+      text: `Al caer la noche bajo las estrellas, ${mainChar.name}${companionText} volvió a casa con un recuerdo mágico para siempre.`,
+      scenePrompt: `${mainChar.name} waving happily under a starry twilight sky`,
+    },
+  ];
+
+  const beats = params.language === "eu" ? beatsEu : beatsEs;
+  const pages = Array.from({ length: pageCount }, (_, i) => {
+    const beat = beats[i % beats.length];
     return {
       pageNumber: i + 1,
       text: beat.text,
@@ -301,24 +279,28 @@ En scenePrompt describe la escena visual en inglés manteniendo exactamente la m
     };
   });
 
-  return { title, dedication, pages, mode: "demo" };
+  return { title, dedication, pages, mode: "demo", warning };
 }
 
-/**
- * Paso 3: Genera la ilustración de cada página usando la ilustración base del personaje
- * como referencia fija para mantener consistencia facial y de estilo.
- * Prioridad: GEMINI_API_KEY (gemini-2.5-flash-image) -> FAL_KEY (flux-pro/kontext) -> Demo.
- */
-export async function generateConsistentStoryPages(params: {
-  pages: { pageNumber: number; text: string; scenePrompt: string }[];
+export async function generateSingleSceneImage(params: {
+  scenePrompt: string;
   styleId: IllustrationStyleId;
-  baseCharacterUrl?: string;
-}): Promise<{ pages: StoryPage[]; mode: "ai" | "demo" }> {
+  characters: CharacterInput[];
+  fallbackIndex?: number;
+}): Promise<{ imageUrl: string; mode: "ai" | "demo"; warning?: string }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const geminiKey = process.env.GEMINI_API_KEY;
-  const falKey = process.env.FAL_KEY;
-  const demoImages = [
-    params.baseCharacterUrl || "/images/char-base.jpg",
+
+  const refImages = params.characters
+    .map((c) => c.baseIllustrationUrl || c.photoDataUrl)
+    .filter((u): u is string => Boolean(u && u.startsWith("data:")));
+
+  const charDetails = params.characters
+    .map((c) => `${c.name}: ${c.ageOrNote || c.role}`)
+    .join("; ");
+
+  const demoPool = [
+    params.characters[0]?.baseIllustrationUrl || "/images/char-base.jpg",
     "/images/scene-treehouse.jpg",
     style.previewImage,
     "/images/style-classic.jpg",
@@ -326,80 +308,71 @@ export async function generateConsistentStoryPages(params: {
   ];
 
   if (geminiKey) {
-    const results: StoryPage[] = [];
-    let usedAi = false;
+    const prompt =
+      refImages.length > 0
+        ? `Keep the exact same character appearance, face, hair, and clothing from the reference image(s). Characters: ${charDetails}. Place them in this scene: ${params.scenePrompt}. Style: ${style.promptModifier}`
+        : `Storybook illustration with characters (${charDetails}). Scene: ${params.scenePrompt}. Style: ${style.promptModifier}`;
 
-    for (let i = 0; i < params.pages.length; i++) {
-      const p = params.pages[i];
-      let imageUrl = demoImages[i % demoImages.length];
+    const { imageUrl, error } = await callGeminiImage({
+      apiKey: geminiKey,
+      prompt,
+      referenceImageDataUrls: refImages,
+    });
 
-      try {
-        const prompt = params.baseCharacterUrl?.startsWith("data:")
-          ? `Keep the exact same character appearance, face, hair, and clothing from the reference character portrait. Place them in this storybook scene: ${p.scenePrompt}. Style: ${style.promptModifier}`
-          : `Storybook illustration scene: ${p.scenePrompt}. Style: ${style.promptModifier}`;
-
-        const generated = await callGeminiImage({
-          apiKey: geminiKey,
-          prompt,
-          referenceImageDataUrl: params.baseCharacterUrl,
-        });
-
-        if (generated) {
-          imageUrl = generated;
-          usedAi = true;
-        }
-      } catch (err) {
-        console.error(`Error generating Gemini page ${p.pageNumber}:`, err);
-      }
-
-      results.push({ ...p, imageUrl });
+    if (imageUrl) {
+      return { imageUrl, mode: "ai" };
     }
-
-    return { pages: results, mode: usedAi ? "ai" : "demo" };
-  }
-
-  if (falKey && params.baseCharacterUrl && params.baseCharacterUrl.startsWith("http")) {
-    const results: StoryPage[] = [];
-    let usedAi = false;
-
-    for (let i = 0; i < params.pages.length; i++) {
-      const p = params.pages[i];
-      let imageUrl = demoImages[i % demoImages.length];
-
-      try {
-        const res = await fetch("https://fal.run/fal-ai/flux-pro/kontext", {
-          method: "POST",
-          headers: {
-            Authorization: `Key ${falKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            prompt: `Keep the exact same character appearance, face, hair and outfit from the reference image. Place them in this scene: ${p.scenePrompt}. Style: ${style.promptModifier}`,
-            image_url: params.baseCharacterUrl,
-          }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { images?: { url: string }[] };
-          if (data.images?.[0]?.url) {
-            imageUrl = data.images[0].url;
-            usedAi = true;
-          }
-        }
-      } catch (err) {
-        console.error(`Error generating page ${p.pageNumber}:`, err);
-      }
-
-      results.push({ ...p, imageUrl });
-    }
-
-    return { pages: results, mode: usedAi ? "ai" : "demo" };
+    return {
+      imageUrl: demoPool[(params.fallbackIndex || 0) % demoPool.length],
+      mode: "demo",
+      warning: error,
+    };
   }
 
   return {
-    pages: params.pages.map((p, idx) => ({
-      ...p,
-      imageUrl: demoImages[idx % demoImages.length],
-    })),
+    imageUrl: demoPool[(params.fallbackIndex || 0) % demoPool.length],
     mode: "demo",
   };
+}
+
+export async function generateConsistentStoryPages(params: {
+  pages: { pageNumber: number; text: string; scenePrompt: string; imageUrl?: string }[];
+  styleId: IllustrationStyleId;
+  characters: CharacterInput[];
+}): Promise<{ pages: StoryPage[]; mode: "ai" | "demo"; warning?: string }> {
+  const results: StoryPage[] = [];
+  let usedAi = false;
+  let lastWarning: string | undefined;
+
+  for (let i = 0; i < params.pages.length; i++) {
+    const p = params.pages[i];
+    if (p.imageUrl) {
+      results.push({
+        pageNumber: p.pageNumber,
+        text: p.text,
+        scenePrompt: p.scenePrompt,
+        imageUrl: p.imageUrl,
+      });
+      continue;
+    }
+
+    const res = await generateSingleSceneImage({
+      scenePrompt: p.scenePrompt,
+      styleId: params.styleId,
+      characters: params.characters,
+      fallbackIndex: i,
+    });
+
+    if (res.mode === "ai") usedAi = true;
+    if (res.warning) lastWarning = res.warning;
+
+    results.push({
+      pageNumber: p.pageNumber,
+      text: p.text,
+      scenePrompt: p.scenePrompt,
+      imageUrl: res.imageUrl,
+    });
+  }
+
+  return { pages: results, mode: usedAi ? "ai" : "demo", warning: lastWarning };
 }

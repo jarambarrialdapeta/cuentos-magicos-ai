@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Sparkles } from "lucide-react";
+import { BookOpen, Sparkles, Users } from "lucide-react";
 
 export function Navbar() {
   return (
@@ -13,27 +13,28 @@ export function Navbar() {
         </Link>
 
         <nav className="nav-links" aria-label="Navegación principal">
-          <Link href="/ejemplos" className="nav-link">
-            Ejemplos
+          <Link href="/crear" className="nav-link">
+            Crear cuento
+          </Link>
+          <Link href="/personajes" className="nav-link">
+            Mis personajes
           </Link>
           <Link href="/mis-cuentos" className="nav-link">
             Mis cuentos
           </Link>
-          <Link href="/#como-funciona" className="nav-link">
-            Consistencia IA
-          </Link>
-          <Link href="/#precios" className="nav-link">
-            Precios
+          <Link href="/ejemplos" className="nav-link">
+            Ejemplos
           </Link>
         </nav>
 
         <div className="nav-actions">
-          <Link href="/mis-cuentos" className="btn btn-secondary btn-sm">
-            Biblioteca
+          <Link href="/personajes" className="btn btn-secondary btn-sm">
+            <Users size={15} />
+            Personajes
           </Link>
           <Link href="/crear" className="btn btn-primary btn-sm">
             <Sparkles size={16} />
-            Crear cuento
+            Nuevo cuento
           </Link>
         </div>
       </div>
