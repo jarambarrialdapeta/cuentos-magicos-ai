@@ -87,59 +87,76 @@ async function callGeminiImage(params: {
   }
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${params.apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(28000),
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig,
-        }),
-      }
-    );
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${params.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(55000),
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig,
+          }),
+        }
+      );
 
-    if (res.ok) {
-      const json = (await res.json()) as {
-        candidates?: Array<{
-          content?: {
-            parts?: Array<{
-              inlineData?: { mimeType?: string; data?: string };
-            }>;
+      if (res.ok) {
+        const json = (await res.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{
+                inlineData?: { mimeType?: string; data?: string };
+              }>;
+            };
+          }>;
+        };
+        const imagePart = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+        if (imagePart?.inlineData?.data) {
+          const mime = imagePart.inlineData.mimeType || "image/png";
+          return { imageUrl: `data:${mime};base64,${imagePart.inlineData.data}` };
+        }
+        return { imageUrl: null, error: "Gemini no devolvió imagen en la respuesta." };
+      }
+
+      const errText = await res.text();
+      console.error("Gemini image error:", res.status, errText);
+
+      if (res.status === 429) {
+        if (errText.includes("limit: 0")) {
+          return {
+            imageUrl: null,
+            error:
+              "Tu API Key de Gemini tiene límite 0 para imágenes en el plan gratuito (Free Tier). Activa la facturación en Google AI Studio para generar ilustraciones reales.",
           };
-        }>;
-      };
-      const imagePart = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-      if (imagePart?.inlineData?.data) {
-        const mime = imagePart.inlineData.mimeType || "image/png";
-        return { imageUrl: `data:${mime};base64,${imagePart.inlineData.data}` };
-      }
-      return { imageUrl: null, error: "Gemini no devolvió imagen en la respuesta." };
-    }
-
-    const errText = await res.text();
-    console.error("Gemini image error:", res.status, errText);
-
-    if (res.status === 429) {
-      if (errText.includes("limit: 0")) {
+        }
+        if (attempt < 2) {
+          await sleep(3000 * (attempt + 1));
+          continue;
+        }
         return {
           imageUrl: null,
-          error:
-            "Tu API Key de Gemini tiene límite 0 para imágenes en el plan gratuito (Free Tier). Activa la facturación en Google AI Studio para generar ilustraciones reales.",
+          error: "Límite temporal de peticiones de imagen en Gemini (429). Inténtalo en unos segundos.",
         };
       }
+
+      if (res.status >= 500 && attempt < 2) {
+        await sleep(2000 * (attempt + 1));
+        continue;
+      }
+
+      return { imageUrl: null, error: `Error Gemini Imagen (${res.status}): ${errText.slice(0, 120)}` };
+    } catch (err) {
+      console.error("Gemini image fetch exception:", err);
       if (attempt < 2) {
-        await sleep(3000 * (attempt + 1));
+        await sleep(2000 * (attempt + 1));
         continue;
       }
       return {
         imageUrl: null,
-        error: "Límite temporal de peticiones de imagen en Gemini (429). Inténtalo en unos segundos.",
+        error: err instanceof Error ? err.message : "Error conectando con Gemini",
       };
     }
-
-    return { imageUrl: null, error: `Error Gemini Imagen (${res.status})` };
   }
 
   return { imageUrl: null, error: "No se pudo generar la imagen con Gemini." };
@@ -175,7 +192,7 @@ async function callFalImage(params: {
         Authorization: `Key ${params.falKey}`,
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(35000),
+      signal: AbortSignal.timeout(55000),
       body: JSON.stringify(payload),
     });
 

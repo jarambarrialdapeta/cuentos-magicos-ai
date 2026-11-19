@@ -398,7 +398,14 @@ export default function CrearCuentoPage() {
             break;
           }
         } else {
-          lastWarn = `Zerbitzariaren errorea ${pageNum}. orrialdean (${patchRes.status})`;
+          let detail = "";
+          try {
+            const errJson = (await patchRes.json()) as { error?: string };
+            if (errJson.error) detail = `: ${errJson.error}`;
+          } catch {
+            // ignore non-JSON body
+          }
+          lastWarn = `Zerbitzariaren errorea ${pageNum}. orrialdean (${patchRes.status})${detail}`;
         }
       }
 
