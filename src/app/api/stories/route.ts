@@ -3,6 +3,7 @@ import {
   generateBaseCharacter,
   generateConsistentStoryPages,
   generateStoryScript,
+  isCleanCharacterRef,
 } from "@/lib/ai-pipeline";
 import { getAllStories, saveStory } from "@/lib/storage";
 import {
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       title?: string;
       dedication?: string;
+      coverScenePrompt?: string;
       language?: StoryLanguage;
       contentType: ContentType;
       bookFormat: BookFormat;
@@ -54,22 +56,30 @@ export async function POST(req: NextRequest) {
     const language = body.language || "es";
     const warnings: string[] = [];
 
-    // Asegurar retrato base para el protagonista si no tiene aún
+    // Asegurar retrato base limpio para cada personaje (nunca usar imágenes de estilo como fallback)
     const updatedCharacters: CharacterInput[] = [];
     for (let i = 0; i < body.characters.length; i++) {
       const c = body.characters[i];
       if (!c.name.trim()) continue;
-      let baseIllustrationUrl = c.baseIllustrationUrl;
-      if (!baseIllustrationUrl && i === 0) {
+      let baseIllustrationUrl = isCleanCharacterRef(c.baseIllustrationUrl)
+        ? c.baseIllustrationUrl
+        : undefined;
+
+      if (!baseIllustrationUrl) {
         const charRes = await generateBaseCharacter({
           name: c.name,
           ageOrNote: c.ageOrNote,
           styleId,
           photoDataUrl: c.photoDataUrl,
         });
-        baseIllustrationUrl = charRes.illustrationUrl;
+        if (charRes.mode === "ai") {
+          baseIllustrationUrl = charRes.illustrationUrl;
+        } else if (c.photoDataUrl) {
+          baseIllustrationUrl = c.photoDataUrl;
+        }
         if (charRes.warning) warnings.push(charRes.warning);
       }
+
       updatedCharacters.push({
         id: c.id || `char-${i + 1}`,
         name: c.name.trim(),
@@ -141,6 +151,7 @@ export async function POST(req: NextRequest) {
       id,
       title: finalTitle,
       dedication: finalDedication,
+      coverScenePrompt: body.coverScenePrompt?.trim() || undefined,
       language,
       contentType: body.contentType || "narrativo",
       bookFormat: body.bookFormat || "mini",

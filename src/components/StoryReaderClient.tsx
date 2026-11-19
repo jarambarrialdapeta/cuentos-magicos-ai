@@ -160,9 +160,18 @@ export function StoryReaderClient({ initialStory }: { initialStory: Story }) {
     reader.readAsDataURL(file);
   };
 
+  const isStylePreview = (url?: string) =>
+    Boolean(url && (url.includes("/images/style-") || url.includes("/images/scene-")));
+
   const coverImage =
-    story.characters[0]?.baseIllustrationUrl ||
-    story.pages[0]?.imageUrl ||
+    (story.coverImageUrl && !isStylePreview(story.coverImageUrl) ? story.coverImageUrl : null) ||
+    (story.pages[0]?.imageUrl && !isStylePreview(story.pages[0].imageUrl)
+      ? story.pages[0].imageUrl
+      : null) ||
+    (story.characters[0]?.baseIllustrationUrl &&
+    !isStylePreview(story.characters[0].baseIllustrationUrl)
+      ? story.characters[0].baseIllustrationUrl
+      : null) ||
     "/images/hero-storybook.jpg";
 
   return (

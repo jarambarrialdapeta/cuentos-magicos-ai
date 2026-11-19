@@ -49,6 +49,8 @@ export interface Story {
   styleId: IllustrationStyleId;
   characters: CharacterInput[];
   pages: StoryPage[];
+  coverImageUrl?: string;
+  coverScenePrompt?: string;
   mode: "ai" | "demo";
   aiWarning?: string;
   createdAt: string;

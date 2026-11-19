@@ -8,6 +8,7 @@ export interface ParsedScriptPage {
 export interface ParsedScriptResult {
   title: string;
   dedication: string;
+  coverScenePrompt?: string;
   pages: ParsedScriptPage[];
 }
 
@@ -32,6 +33,7 @@ export function parsePreparedScript(raw: string): ParsedScriptResult {
 
   let title = "";
   let dedication = "";
+  let coverScenePrompt: string | undefined;
 
   interface RawSection {
     kind: "cover" | "page";
@@ -147,6 +149,12 @@ export function parsePreparedScript(raw: string): ParsedScriptResult {
       .filter(Boolean)
       .join(" | ");
 
+    if (sec.kind === "cover" && sections.some((s) => s.kind === "page")) {
+      if (!title && pageText) title = cleanQuotes(pageText);
+      if (combinedScene) coverScenePrompt = combinedScene;
+      continue;
+    }
+
     if (finalText || combinedScene) {
       pages.push({
         pageNumber: pages.length + 1,
@@ -188,6 +196,7 @@ export function parsePreparedScript(raw: string): ParsedScriptResult {
   return {
     title,
     dedication,
+    coverScenePrompt,
     pages,
   };
 }

@@ -59,6 +59,7 @@ export default function CrearCuentoPage() {
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [dedication, setDedication] = useState("");
+  const [coverScenePrompt, setCoverScenePrompt] = useState("");
   const [idea, setIdea] = useState("");
   const [customPages, setCustomPages] = useState<DraftPage[]>([
     { pageNumber: 1, text: "", scenePrompt: "" },
@@ -238,6 +239,7 @@ export default function CrearCuentoPage() {
     }
     if (parsed.title) setTitle(parsed.title);
     if (parsed.dedication) setDedication(parsed.dedication);
+    if (parsed.coverScenePrompt) setCoverScenePrompt(parsed.coverScenePrompt);
     setCustomPages(
       parsed.pages.map((p, idx) => ({
         pageNumber: idx + 1,
@@ -247,7 +249,7 @@ export default function CrearCuentoPage() {
     );
     setScriptMode("custom");
     setImportNotice(
-      `¡Guion importado! Se han cargado ${parsed.pages.length} páginas listas para revisar e ilustrar.`
+      `¡Guion importado! Se han cargado ${parsed.pages.length} páginas${parsed.coverScenePrompt ? " + portada (Azala)" : ""} listas para revisar e ilustrar.`
     );
   };
 
@@ -258,30 +260,62 @@ export default function CrearCuentoPage() {
     for (let i = 0; i < pageNumbers.length; i++) {
       const pageNum = pageNumbers[i];
       setProgressStatus(`Ilustrando página ${i + 1} de ${pageNumbers.length}...`);
-      const patchRes = await fetch(`/api/stories/${storyId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pageNumber: pageNum,
-          regenerateImage: true,
-        }),
-      });
-      if (patchRes.ok) {
-        const patchData = (await patchRes.json()) as {
-          warning?: string;
-          imageMode?: "ai" | "demo";
-        };
-        if (patchData.imageMode === "ai") {
-          generatedAiCount++;
-        } else if (patchData.warning) {
-          setImageQuotaWarning(patchData.warning);
-          setCreatedDraftStoryId(storyId);
-          setGeneratingStory(false);
-          setProgressStatus("");
-          return false;
+
+      let success = false;
+      let lastWarn: string | undefined;
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+          setProgressStatus(`Reintentando página ${i + 1} de ${pageNumbers.length}...`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+
+        const patchRes = await fetch(`/api/stories/${storyId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageNumber: pageNum,
+            regenerateImage: true,
+          }),
+        });
+
+        if (patchRes.ok) {
+          const patchData = (await patchRes.json()) as {
+            warning?: string;
+            imageMode?: "ai" | "demo";
+          };
+          if (patchData.imageMode === "ai") {
+            generatedAiCount++;
+            success = true;
+            break;
+          }
+          lastWarn = patchData.warning;
+          if (lastWarn && (lastWarn.includes("límite 0") || lastWarn.includes("No hay ningún proveedor"))) {
+            break;
+          }
+        } else {
+          lastWarn = `Error del servidor en página ${pageNum} (${patchRes.status})`;
         }
       }
+
+      if (!success) {
+        setImageQuotaWarning(lastWarn || `No se pudo ilustrar la página ${pageNum}.`);
+        setCreatedDraftStoryId(storyId);
+        setGeneratingStory(false);
+        setProgressStatus("");
+        return false;
+      }
     }
+
+    // Generar ilustración de portada usando la página 1 como ancla visual
+    setProgressStatus("Ilustrando portada del cuento...");
+    await fetch(`/api/stories/${storyId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        regenerateCover: true,
+      }),
+    });
 
     if (generatedAiCount === 0) {
       setImageQuotaWarning("No se pudieron generar las ilustraciones con IA.");
@@ -307,6 +341,7 @@ export default function CrearCuentoPage() {
     let pagesToCreate = customPages;
     let resolvedTitle = title.trim();
     let resolvedDedication = dedication.trim();
+    let resolvedCoverPrompt = coverScenePrompt.trim();
 
     if (scriptMode === "import") {
       if (!rawScriptText.trim()) {
@@ -320,6 +355,10 @@ export default function CrearCuentoPage() {
       }
       if (!resolvedTitle && parsed.title) resolvedTitle = parsed.title;
       if (!resolvedDedication && parsed.dedication) resolvedDedication = parsed.dedication;
+      if (!resolvedCoverPrompt && parsed.coverScenePrompt) {
+        resolvedCoverPrompt = parsed.coverScenePrompt;
+        setCoverScenePrompt(parsed.coverScenePrompt);
+      }
       pagesToCreate = parsed.pages.map((p, idx) => ({
         pageNumber: idx + 1,
         text: p.text,
@@ -349,6 +388,7 @@ export default function CrearCuentoPage() {
         body: JSON.stringify({
           title: resolvedTitle || undefined,
           dedication: resolvedDedication || undefined,
+          coverScenePrompt: resolvedCoverPrompt || undefined,
           language,
           contentType,
           bookFormat,

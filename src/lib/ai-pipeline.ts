@@ -77,13 +77,13 @@ async function callGeminiImage(params: {
 
   parts.push({ text: params.prompt });
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${params.apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(28000),
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
@@ -122,8 +122,8 @@ async function callGeminiImage(params: {
             "Tu API Key de Gemini tiene límite 0 para imágenes en el plan gratuito (Free Tier). Activa la facturación en Google AI Studio para generar ilustraciones reales.",
         };
       }
-      if (attempt === 0) {
-        await sleep(3000);
+      if (attempt < 2) {
+        await sleep(3000 * (attempt + 1));
         continue;
       }
       return {
@@ -253,7 +253,7 @@ export async function generateBaseCharacter(params: {
   }
 
   return {
-    illustrationUrl: params.photoDataUrl || style.previewImage || "/images/char-base.jpg",
+    illustrationUrl: params.photoDataUrl || "/images/char-base.jpg",
     mode: "demo",
     providerInfo: "Modo Demo",
     warning,
@@ -371,36 +371,96 @@ Reglas estrictas:
   return { title, dedication, pages, mode: "demo", warning };
 }
 
+export function isCleanCharacterRef(url?: string): boolean {
+  if (!url) return false;
+  if (url.startsWith("data:")) return true;
+  if (
+    url.startsWith("/images/style-") ||
+    url.startsWith("/images/scene-") ||
+    url.startsWith("/images/hero-")
+  ) {
+    return false;
+  }
+  return url.startsWith("/images/");
+}
+
 export async function generateSingleSceneImage(params: {
   scenePrompt: string;
   styleId: IllustrationStyleId;
   characters: CharacterInput[];
+  styleAnchorImage?: string;
   fallbackIndex?: number;
 }): Promise<{ imageUrl: string; mode: "ai" | "demo"; warning?: string }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const { geminiKey, falKey } = getEffectiveApiKeys();
 
-  // Recoger fotos reales y retratos IA de todos los personajes seleccionados (sin duplicados)
-  const refSet = new Set<string>();
+  // Recoger únicamente fotos reales y retratos IA de los personajes (NUNCA imágenes de estilo de ejemplo)
+  const refImages: string[] = [];
+  const refLabels: string[] = [];
+  const seen = new Set<string>();
+
   for (const c of params.characters) {
-    if (c.baseIllustrationUrl) refSet.add(c.baseIllustrationUrl);
-    if (c.photoDataUrl) refSet.add(c.photoDataUrl);
+    const primaryRef =
+      (c.photoDataUrl && isCleanCharacterRef(c.photoDataUrl) ? c.photoDataUrl : undefined) ||
+      (c.baseIllustrationUrl && isCleanCharacterRef(c.baseIllustrationUrl)
+        ? c.baseIllustrationUrl
+        : undefined);
+
+    if (primaryRef && !seen.has(primaryRef)) {
+      seen.add(primaryRef);
+      refImages.push(primaryRef);
+      refLabels.push(
+        `Reference image ${refImages.length}: ${c.name} (${c.ageOrNote || c.role}) — keep this exact face, hair, age, and outfit.`
+      );
+    }
+
+    // Si tiene tanto foto real como retrato IA, incluir también el retrato IA como refuerzo
+    if (
+      c.photoDataUrl &&
+      c.baseIllustrationUrl &&
+      isCleanCharacterRef(c.baseIllustrationUrl) &&
+      !seen.has(c.baseIllustrationUrl) &&
+      refImages.length < 5
+    ) {
+      seen.add(c.baseIllustrationUrl);
+      refImages.push(c.baseIllustrationUrl);
+      refLabels.push(
+        `Reference image ${refImages.length}: ${c.name} illustrated character sheet — match this exact illustrated face and outfit.`
+      );
+    }
   }
-  const refImages = Array.from(refSet).slice(0, 6);
+
+  if (
+    params.styleAnchorImage &&
+    isCleanCharacterRef(params.styleAnchorImage) &&
+    !seen.has(params.styleAnchorImage) &&
+    refImages.length < 6
+  ) {
+    seen.add(params.styleAnchorImage);
+    refImages.push(params.styleAnchorImage);
+    refLabels.push(
+      `Reference image ${refImages.length}: Visual consistency anchor from Page 1 of this exact book — match the EXACT same character faces, proportions, clothing, and rendering style.`
+    );
+  }
 
   const charDetails = params.characters
-    .map((c) => `${c.name}: ${c.ageOrNote || c.role}`)
+    .map((c) => `${c.name} (${c.ageOrNote || c.role})`)
     .join("; ");
 
   const consistentFallback =
     params.characters[0]?.photoDataUrl ||
-    params.characters[0]?.baseIllustrationUrl ||
-    style.previewImage;
+    (isCleanCharacterRef(params.characters[0]?.baseIllustrationUrl)
+      ? params.characters[0]?.baseIllustrationUrl
+      : undefined) ||
+    "/images/char-base.jpg";
+
+  const consistencyRules =
+    "CRITICAL CONSISTENCY: Keep the EXACT same facial features, eye shape, hair color/style, age, proportions, and clothing for every character across all pages. Do NOT invent a different person or add unrelated objects/costumes (no spacesuits/astronauts unless requested).";
 
   const prompt =
     refImages.length > 0
-      ? `Keep the exact same character appearance, face, hair, and clothing from the reference image(s). Characters: ${charDetails}. Place them in this storybook scene: ${params.scenePrompt}. Style: ${style.promptModifier}`
-      : `Children's storybook illustration with characters (${charDetails}). Scene: ${params.scenePrompt}. Style: ${style.promptModifier}`;
+      ? `${refLabels.join(" ")} Characters in scene: ${charDetails}. ${consistencyRules} Scene to illustrate: ${params.scenePrompt}. Art style: ${style.promptModifier}`
+      : `Children's storybook illustration with characters (${charDetails}). ${consistencyRules} Scene: ${params.scenePrompt}. Art style: ${style.promptModifier}`;
 
   let lastWarning: string | undefined;
 

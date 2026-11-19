@@ -34,6 +34,7 @@ export async function PATCH(
     scenePrompt?: string;
     imageUrl?: string;
     regenerateImage?: boolean;
+    regenerateCover?: boolean;
   };
 
   if (typeof body.title === "string" && body.title.trim()) {
@@ -49,6 +50,33 @@ export async function PATCH(
   let warning: string | undefined;
   let imageMode: "ai" | "demo" | undefined;
 
+  const firstAnchor = story.pages[0]?.imageUrl?.startsWith("data:")
+    ? story.pages[0].imageUrl
+    : story.coverImageUrl?.startsWith("data:")
+      ? story.coverImageUrl
+      : undefined;
+
+  if (body.regenerateCover) {
+    const coverPrompt =
+      story.coverScenePrompt ||
+      `Book cover illustration for "${story.title}" featuring ${story.characters.map((c) => c.name).join(" and ")} together smiling in the main setting of the story.`;
+    const regen = await generateSingleSceneImage({
+      scenePrompt: coverPrompt,
+      styleId: story.styleId,
+      characters: story.characters,
+      styleAnchorImage: firstAnchor,
+    });
+    if (regen.mode === "ai") {
+      story.coverImageUrl = regen.imageUrl;
+      story.mode = "ai";
+      delete story.aiWarning;
+    } else if (regen.warning) {
+      story.aiWarning = regen.warning;
+    }
+    warning = regen.warning;
+    imageMode = regen.mode;
+  }
+
   if (typeof body.pageNumber === "number") {
     const targetPage = story.pages.find((p) => p.pageNumber === body.pageNumber);
     if (targetPage) {
@@ -57,10 +85,12 @@ export async function PATCH(
       if (typeof body.imageUrl === "string") targetPage.imageUrl = body.imageUrl;
 
       if (body.regenerateImage) {
+        const anchor = targetPage.pageNumber > 1 ? firstAnchor : undefined;
         const regen = await generateSingleSceneImage({
           scenePrompt: targetPage.scenePrompt || targetPage.text,
           styleId: story.styleId,
           characters: story.characters,
+          styleAnchorImage: anchor,
           fallbackIndex: targetPage.pageNumber,
         });
         targetPage.imageUrl = regen.imageUrl;
