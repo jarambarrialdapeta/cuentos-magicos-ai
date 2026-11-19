@@ -1,33 +1,40 @@
 import { jsPDF } from "jspdf";
 import { Story } from "./types";
 
-async function loadImageAsJpegDataUrl(src: string): Promise<string | null> {
+interface LoadedImage {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+async function loadImagePreserveRatio(src: string): Promise<LoadedImage | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
+        const maxDim = 1600;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+
         const canvas = document.createElement("canvas");
-        const targetSize = 1024;
-        canvas.width = targetSize;
-        canvas.height = targetSize;
+        canvas.width = w;
+        canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           resolve(null);
           return;
         }
-        ctx.fillStyle = "#FBF7F0";
-        ctx.fillRect(0, 0, targetSize, targetSize);
+        ctx.fillStyle = "#FBF6EC";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
 
-        // Center-crop (cover) para que todas las ilustraciones queden cuadradas y limpias
-        const scale = Math.max(targetSize / img.width, targetSize / img.height);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        const x = (targetSize - w) / 2;
-        const y = (targetSize - h) / 2;
-        ctx.drawImage(img, x, y, w, h);
-
-        resolve(canvas.toDataURL("image/jpeg", 0.92));
+        resolve({
+          dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+          width: w,
+          height: h,
+        });
       } catch {
         resolve(null);
       }
@@ -37,24 +44,58 @@ async function loadImageAsJpegDataUrl(src: string): Promise<string | null> {
   });
 }
 
-function drawCreamBackgroundAndFrame(doc: jsPDF, w: number, h: number) {
-  // Papel crema cálido
-  doc.setFillColor(251, 247, 240);
+function drawFittedImage(
+  doc: jsPDF,
+  img: LoadedImage,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  withFrame = true
+) {
+  const scale = Math.min(boxW / img.width, boxH / img.height);
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const drawX = boxX + (boxW - drawW) / 2;
+  const drawY = boxY + (boxH - drawH) / 2;
+
+  if (withFrame) {
+    // Sombra suave
+    doc.setFillColor(232, 222, 206);
+    doc.roundedRect(drawX + 1.5, drawY + 1.5, drawW, drawH, 2.5, 2.5, "F");
+  }
+
+  doc.addImage(img.dataUrl, "JPEG", drawX, drawY, drawW, drawH);
+
+  if (withFrame) {
+    doc.setDrawColor(208, 158, 84);
+    doc.setLineWidth(0.6);
+    doc.rect(drawX, drawY, drawW, drawH);
+  }
+}
+
+function drawPageFrame(doc: jsPDF, w: number, h: number) {
+  doc.setFillColor(251, 246, 236);
   doc.rect(0, 0, w, h, "F");
 
-  // Doble marco dorado
   doc.setDrawColor(212, 163, 89);
-  doc.setLineWidth(0.7);
-  doc.rect(8, 8, w - 16, h - 16);
-  doc.setLineWidth(0.3);
-  doc.rect(10.5, 10.5, w - 21, h - 21);
+  doc.setLineWidth(0.75);
+  doc.roundedRect(7, 7, w - 14, h - 14, 3, 3);
+  doc.setLineWidth(0.28);
+  doc.roundedRect(9.8, 9.8, w - 19.6, h - 19.6, 2, 2);
+}
+
+function drawPageNumber(doc: jsPDF, pageNumber: number, x: number, y: number) {
+  doc.setFont("times", "italic");
+  doc.setFontSize(10.5);
+  doc.setTextColor(145, 124, 102);
+  doc.text(`— ${pageNumber} —`, x, y, { align: "center" });
 }
 
 export async function downloadStoryBookPdf(
   story: Story,
   coverImageUrl: string
 ): Promise<void> {
-  // Formato álbum apaisado A4 (297mm x 210mm) — como un libro abierto
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -65,113 +106,166 @@ export async function downloadStoryBookPdf(
   const H = 210;
 
   // 1. AZALA (Portada)
-  drawCreamBackgroundAndFrame(doc, W, H);
+  drawPageFrame(doc, W, H);
 
-  const coverData = await loadImageAsJpegDataUrl(coverImageUrl);
-  if (coverData) {
-    const imgSize = 118;
-    const imgX = (W - imgSize) / 2;
-    const imgY = 20;
-    doc.setDrawColor(212, 163, 89);
-    doc.setLineWidth(0.8);
-    doc.rect(imgX - 1.5, imgY - 1.5, imgSize + 3, imgSize + 3);
-    doc.addImage(coverData, "JPEG", imgX, imgY, imgSize, imgSize);
+  const coverImg = await loadImagePreserveRatio(coverImageUrl);
+  if (coverImg) {
+    drawFittedImage(doc, coverImg, 36, 17, W - 72, 124, true);
   }
 
   doc.setFont("times", "bold");
   doc.setTextColor(42, 33, 24);
   doc.setFontSize(24);
-  const titleLines = doc.splitTextToSize(story.title, W - 60) as string[];
-  doc.text(titleLines, W / 2, 154, { align: "center" });
+  const titleLines = doc.splitTextToSize(story.title, W - 56) as string[];
+  doc.text(titleLines, W / 2, 156, { align: "center", lineHeightFactor: 1.2 });
+
+  doc.setDrawColor(212, 163, 89);
+  doc.setLineWidth(0.5);
+  doc.line(W / 2 - 28, 176, W / 2 + 28, 176);
 
   doc.setFont("times", "italic");
   doc.setFontSize(12);
   doc.setTextColor(120, 102, 84);
   const charsLabel = story.characters.map((c) => c.name).join("  ·  ");
-  doc.text(charsLabel, W / 2, 184, { align: "center" });
+  doc.text(charsLabel, W / 2, 185, { align: "center" });
 
-  // 2. ESKAINTZA (Página de dedicatoria)
+  // 2. ESKAINTZA (Dedicatoria)
   doc.addPage();
-  drawCreamBackgroundAndFrame(doc, W, H);
+  drawPageFrame(doc, W, H);
 
   doc.setFont("times", "italic");
-  doc.setFontSize(18);
+  doc.setFontSize(19);
   doc.setTextColor(65, 52, 40);
-  const dedLines = doc.splitTextToSize(`“${story.dedication}”`, W - 90) as string[];
+  const dedLines = doc.splitTextToSize(`“${story.dedication}”`, W - 96) as string[];
   const dedStartY = H / 2 - (dedLines.length * 8) / 2;
-  doc.text(dedLines, W / 2, dedStartY, { align: "center" });
+  doc.text(dedLines, W / 2, dedStartY, { align: "center", lineHeightFactor: 1.4 });
 
   doc.setDrawColor(212, 163, 89);
   doc.setLineWidth(0.5);
-  doc.line(W / 2 - 25, dedStartY - 12, W / 2 + 25, dedStartY - 12);
-  doc.line(W / 2 - 25, dedStartY + dedLines.length * 8 + 6, W / 2 + 25, dedStartY + dedLines.length * 8 + 6);
+  doc.line(W / 2 - 24, dedStartY - 12, W / 2 + 24, dedStartY - 12);
+  doc.line(
+    W / 2 - 24,
+    dedStartY + dedLines.length * 8 + 8,
+    W / 2 + 24,
+    dedStartY + dedLines.length * 8 + 8
+  );
 
-  // 3. ORRIALDE BAKOITZA (Libro abierto: Ilustración izquierda + Texto derecha)
+  // 3. ORRIALDEAK — 4 maquetazio desberdin txandakatuta (irudia inoiz moztu gabe)
   for (let i = 0; i < story.pages.length; i++) {
     const page = story.pages[i];
     doc.addPage();
+    drawPageFrame(doc, W, H);
 
-    // Fondo crema completo
-    doc.setFillColor(251, 247, 240);
-    doc.rect(0, 0, W, H, "F");
+    const pageImg = await loadImagePreserveRatio(page.imageUrl || coverImageUrl);
+    const variant = i % 4;
 
-    // Pliegue central del libro
-    doc.setDrawColor(222, 212, 198);
-    doc.setLineWidth(0.6);
-    doc.line(W / 2, 10, W / 2, H - 10);
-
-    // Mitad izquierda: Ilustración cuadrada grande con marco
-    const pageImgData = await loadImageAsJpegDataUrl(page.imageUrl || coverImageUrl);
-    const imgSize = 128;
-    const imgX = (W / 2 - imgSize) / 2;
-    const imgY = (H - imgSize) / 2;
-
-    if (pageImgData) {
-      doc.setDrawColor(212, 163, 89);
-      doc.setLineWidth(0.6);
-      doc.rect(imgX - 1.2, imgY - 1.2, imgSize + 2.4, imgSize + 2.4);
-      doc.addImage(pageImgData, "JPEG", imgX, imgY, imgSize, imgSize);
-    }
-
-    // Mitad derecha: Texto del cuento centrado verticalmente
-    const rightCenterX = W * 0.75;
-    const textMaxWidth = W / 2 - 34;
-
+    const fontSize = page.text.length > 220 ? 13.5 : page.text.length > 130 ? 15.5 : 17.5;
     doc.setFont("times", "normal");
-    doc.setTextColor(38, 30, 22);
-    const fontSize = page.text.length > 220 ? 14 : page.text.length > 130 ? 16 : 18;
     doc.setFontSize(fontSize);
+    doc.setTextColor(38, 30, 22);
 
-    const textLines = doc.splitTextToSize(page.text, textMaxWidth) as string[];
-    const lineHeight = fontSize * 0.52;
-    const blockHeight = textLines.length * lineHeight;
-    const textStartY = H / 2 - blockHeight / 2 + 4;
+    if (variant === 0) {
+      // A: Panoramikoa — Ilustrazio handia goian + testu-txartel beroa behean
+      if (pageImg) {
+        drawFittedImage(doc, pageImg, 22, 16, W - 44, 126, true);
+      }
 
-    doc.text(textLines, rightCenterX, textStartY, {
-      align: "center",
-      lineHeightFactor: 1.45,
-    });
+      doc.setFillColor(244, 236, 222);
+      doc.setDrawColor(218, 178, 114);
+      doc.setLineWidth(0.45);
+      doc.roundedRect(26, 148, W - 52, 42, 3, 3, "FD");
 
-    // Número de página elegante
-    doc.setFont("times", "italic");
-    doc.setFontSize(11);
-    doc.setTextColor(140, 122, 104);
-    doc.text(`— ${page.pageNumber} —`, rightCenterX, H - 16, { align: "center" });
+      const lines = doc.splitTextToSize(page.text, W - 72) as string[];
+      const lineH = fontSize * 0.48;
+      const startY = 169 - (lines.length * lineH) / 2 + 2;
+      doc.text(lines, W / 2, startY, { align: "center", lineHeightFactor: 1.38 });
+      drawPageNumber(doc, page.pageNumber, W / 2, 196);
+    } else if (variant === 1) {
+      // B: Liburu irekia — Ilustrazioa ezkerrean + testua eskuinean
+      doc.setDrawColor(228, 218, 204);
+      doc.setLineWidth(0.5);
+      doc.line(W / 2, 14, W / 2, H - 14);
+
+      if (pageImg) {
+        drawFittedImage(doc, pageImg, 16, 20, W / 2 - 24, H - 40, true);
+      }
+
+      const rightCenterX = W * 0.75;
+      const lines = doc.splitTextToSize(page.text, W / 2 - 36) as string[];
+      const lineH = fontSize * 0.52;
+      const startY = H / 2 - (lines.length * lineH) / 2 + 2;
+
+      doc.setDrawColor(212, 163, 89);
+      doc.setLineWidth(0.45);
+      doc.line(rightCenterX - 18, startY - 10, rightCenterX + 18, startY - 10);
+
+      doc.text(lines, rightCenterX, startY, { align: "center", lineHeightFactor: 1.45 });
+      drawPageNumber(doc, page.pageNumber, rightCenterX, H - 16);
+    } else if (variant === 2) {
+      // C: Alderantzizko liburu irekia — Testua ezkerrean + ilustrazioa eskuinean
+      doc.setDrawColor(228, 218, 204);
+      doc.setLineWidth(0.5);
+      doc.line(W / 2, 14, W / 2, H - 14);
+
+      const leftCenterX = W * 0.25;
+      const lines = doc.splitTextToSize(page.text, W / 2 - 36) as string[];
+      const lineH = fontSize * 0.52;
+      const startY = H / 2 - (lines.length * lineH) / 2 + 2;
+
+      doc.setDrawColor(194, 92, 62);
+      doc.setLineWidth(0.55);
+      doc.line(leftCenterX - 18, startY - 10, leftCenterX + 18, startY - 10);
+
+      doc.text(lines, leftCenterX, startY, { align: "center", lineHeightFactor: 1.45 });
+      drawPageNumber(doc, page.pageNumber, leftCenterX, H - 16);
+
+      if (pageImg) {
+        drawFittedImage(doc, pageImg, W / 2 + 8, 20, W / 2 - 24, H - 40, true);
+      }
+    } else {
+      // D: Album artistikoa — Ilustrazio handia eskuinera/gora lerratuta + pergamino-kaxa behe-ezkerrean
+      if (pageImg) {
+        drawFittedImage(doc, pageImg, 78, 16, W - 96, H - 42, true);
+      }
+
+      doc.setFillColor(251, 246, 236);
+      doc.setDrawColor(208, 158, 84);
+      doc.setLineWidth(0.6);
+      const boxW = 122;
+      const lines = doc.splitTextToSize(page.text, boxW - 18) as string[];
+      const lineH = fontSize * 0.48;
+      const boxH = Math.max(44, lines.length * lineH + 20);
+      const boxX = 16;
+      const boxY = H - boxH - 18;
+
+      doc.roundedRect(boxX, boxY, boxW, boxH, 3, 3, "FD");
+      doc.text(lines, boxX + boxW / 2, boxY + 13, {
+        align: "center",
+        lineHeightFactor: 1.38,
+      });
+      drawPageNumber(doc, page.pageNumber, boxX + boxW / 2, H - 12);
+    }
   }
 
-  // 4. KONTRAZALA (Página final)
+  // 4. KONTRAZALA
   doc.addPage();
-  drawCreamBackgroundAndFrame(doc, W, H);
+  drawPageFrame(doc, W, H);
 
   doc.setFont("times", "bold");
-  doc.setFontSize(22);
+  doc.setFontSize(24);
   doc.setTextColor(42, 33, 24);
   doc.text("Amaiera", W / 2, H / 2 - 6, { align: "center" });
+
+  doc.setDrawColor(212, 163, 89);
+  doc.setLineWidth(0.5);
+  doc.line(W / 2 - 22, H / 2 + 2, W / 2 + 22, H / 2 + 2);
 
   doc.setFont("times", "italic");
   doc.setFontSize(12);
   doc.setTextColor(140, 122, 104);
-  doc.text("IpuinMagikoak · Zure ipuin ilustratua", W / 2, H / 2 + 8, { align: "center" });
+  doc.text("IpuinMagikoak · Zure ipuin ilustratua", W / 2, H / 2 + 12, {
+    align: "center",
+  });
 
   const safeFileName =
     story.title
