@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  FileText,
   Loader2,
   Plus,
   Sparkles,
@@ -18,6 +19,7 @@ import {
   CONTENT_TYPES,
   ILLUSTRATION_STYLES,
 } from "@/lib/catalog";
+import { parsePreparedScript } from "@/lib/script-parser";
 import {
   BookFormat,
   CharacterInput,
@@ -51,8 +53,10 @@ export default function CrearCuentoPage() {
   const [newCharPhoto, setNewCharPhoto] = useState<string | undefined>(undefined);
   const [addingChar, setAddingChar] = useState(false);
 
-  // Guion: "custom" (página a página) o "idea" (generado por IA)
-  const [scriptMode, setScriptMode] = useState<"custom" | "idea">("custom");
+  // Guion: "import" (pegar/subir guion), "custom" (página a página) o "idea" (generado por IA)
+  const [scriptMode, setScriptMode] = useState<"import" | "custom" | "idea">("import");
+  const [rawScriptText, setRawScriptText] = useState("");
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [dedication, setDedication] = useState("");
   const [idea, setIdea] = useState("");
@@ -65,6 +69,8 @@ export default function CrearCuentoPage() {
   const [generatingStory, setGeneratingStory] = useState(false);
   const [progressStatus, setProgressStatus] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [imageQuotaWarning, setImageQuotaWarning] = useState<string | null>(null);
+  const [createdDraftStoryId, setCreatedDraftStoryId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/characters")
@@ -161,19 +167,129 @@ export default function CrearCuentoPage() {
     );
   };
 
+  const handleScriptFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setRawScriptText(reader.result);
+        setImportNotice(null);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const handleParsePreparedScript = () => {
+    setErrorMsg(null);
+    setImportNotice(null);
+    if (!rawScriptText.trim()) {
+      setErrorMsg("Pega un guion o sube un archivo .txt / .md primero.");
+      return;
+    }
+    const parsed = parsePreparedScript(rawScriptText);
+    if (parsed.pages.length === 0) {
+      setErrorMsg("No se pudieron detectar páginas en el texto. Revisa el formato.");
+      return;
+    }
+    if (parsed.title) setTitle(parsed.title);
+    if (parsed.dedication) setDedication(parsed.dedication);
+    setCustomPages(
+      parsed.pages.map((p, idx) => ({
+        pageNumber: idx + 1,
+        text: p.text,
+        scenePrompt: p.scenePrompt,
+      }))
+    );
+    setScriptMode("custom");
+    setImportNotice(
+      `¡Guion importado! Se han cargado ${parsed.pages.length} páginas listas para revisar e ilustrar.`
+    );
+  };
+
+  const generateImagesForStory = async (storyId: string, pageNumbers: number[]) => {
+    setImageQuotaWarning(null);
+    let generatedAiCount = 0;
+
+    for (let i = 0; i < pageNumbers.length; i++) {
+      const pageNum = pageNumbers[i];
+      setProgressStatus(`Ilustrando página ${i + 1} de ${pageNumbers.length}...`);
+      const patchRes = await fetch(`/api/stories/${storyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageNumber: pageNum,
+          regenerateImage: true,
+        }),
+      });
+      if (patchRes.ok) {
+        const patchData = (await patchRes.json()) as {
+          warning?: string;
+          imageMode?: "ai" | "demo";
+        };
+        if (patchData.imageMode === "ai") {
+          generatedAiCount++;
+        } else if (patchData.warning) {
+          setImageQuotaWarning(patchData.warning);
+          setCreatedDraftStoryId(storyId);
+          setGeneratingStory(false);
+          setProgressStatus("");
+          return false;
+        }
+      }
+    }
+
+    if (generatedAiCount === 0) {
+      setImageQuotaWarning("No se pudieron generar las ilustraciones con IA.");
+      setCreatedDraftStoryId(storyId);
+      setGeneratingStory(false);
+      setProgressStatus("");
+      return false;
+    }
+
+    return true;
+  };
+
   const handleCreateStory = async () => {
     setErrorMsg(null);
+    setImageQuotaWarning(null);
+    setCreatedDraftStoryId(null);
+
     if (selectedCharacters.length === 0) {
       setErrorMsg("Selecciona o crea al menos un personaje en el Paso 3.");
       return;
     }
 
-    if (scriptMode === "custom") {
+    let pagesToCreate = customPages;
+    let resolvedTitle = title.trim();
+    let resolvedDedication = dedication.trim();
+
+    if (scriptMode === "import") {
+      if (!rawScriptText.trim()) {
+        setErrorMsg("Pega tu guion preparado o sube un archivo .txt / .md.");
+        return;
+      }
+      const parsed = parsePreparedScript(rawScriptText);
+      if (parsed.pages.length === 0) {
+        setErrorMsg("No se pudieron detectar páginas en el guion pegado.");
+        return;
+      }
+      if (!resolvedTitle && parsed.title) resolvedTitle = parsed.title;
+      if (!resolvedDedication && parsed.dedication) resolvedDedication = parsed.dedication;
+      pagesToCreate = parsed.pages.map((p, idx) => ({
+        pageNumber: idx + 1,
+        text: p.text,
+        scenePrompt: p.scenePrompt,
+      }));
+      setCustomPages(pagesToCreate);
+      if (resolvedTitle) setTitle(resolvedTitle);
+    } else if (scriptMode === "custom") {
       const validPages = customPages.filter((p) => p.text.trim() || p.scenePrompt.trim());
       if (validPages.length === 0) {
         setErrorMsg("Escribe al menos una página de tu guion.");
         return;
       }
+      pagesToCreate = validPages;
     } else if (!idea.trim()) {
       setErrorMsg("Escribe la idea o argumento del cuento.");
       return;
@@ -182,12 +298,13 @@ export default function CrearCuentoPage() {
     setGeneratingStory(true);
     setProgressStatus("Preparando el guion y los personajes...");
     try {
+      const useCustomPages = scriptMode === "import" || scriptMode === "custom";
       const res = await fetch("/api/stories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || undefined,
-          dedication: dedication.trim() || undefined,
+          title: resolvedTitle || undefined,
+          dedication: resolvedDedication || undefined,
           language,
           contentType,
           bookFormat,
@@ -195,16 +312,15 @@ export default function CrearCuentoPage() {
           characters: selectedCharacters,
           skipImages: true,
           idea: scriptMode === "idea" ? idea.trim() : undefined,
-          customPages:
-            scriptMode === "custom"
-              ? customPages
-                  .filter((p) => p.text.trim() || p.scenePrompt.trim())
-                  .map((p, idx) => ({
-                    pageNumber: idx + 1,
-                    text: p.text.trim(),
-                    scenePrompt: p.scenePrompt.trim() || p.text.trim(),
-                  }))
-              : undefined,
+          customPages: useCustomPages
+            ? pagesToCreate
+                .filter((p) => p.text.trim() || p.scenePrompt.trim())
+                .map((p, idx) => ({
+                  pageNumber: idx + 1,
+                  text: p.text.trim(),
+                  scenePrompt: p.scenePrompt.trim() || p.text.trim(),
+                }))
+            : undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -214,29 +330,12 @@ export default function CrearCuentoPage() {
       if (!res.ok || !data.story) throw new Error(data.error || "Error creando el cuento");
 
       const storyId = data.story.id;
-      const totalPages = data.story.pages.length;
-
-      for (let i = 0; i < totalPages; i++) {
-        const pageNum = data.story.pages[i].pageNumber;
-        setProgressStatus(`Ilustrando página ${i + 1} de ${totalPages}...`);
-        const patchRes = await fetch(`/api/stories/${storyId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pageNumber: pageNum,
-            regenerateImage: true,
-          }),
-        });
-        if (patchRes.ok) {
-          const patchData = (await patchRes.json()) as { warning?: string };
-          if (patchData.warning && patchData.warning.includes("límite 0")) {
-            break;
-          }
-        }
+      const pageNums = data.story.pages.map((p) => p.pageNumber);
+      const ok = await generateImagesForStory(storyId, pageNums);
+      if (ok) {
+        setProgressStatus("¡Cuento listo! Abriendo libro...");
+        router.push(`/cuento/${storyId}`);
       }
-
-      setProgressStatus("¡Cuento listo! Abriendo libro...");
-      router.push(`/cuento/${storyId}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "No se pudo crear el cuento");
       setGeneratingStory(false);
@@ -294,6 +393,49 @@ export default function CrearCuentoPage() {
             }}
           >
             {errorMsg}
+          </div>
+        )}
+
+        {imageQuotaWarning && (
+          <div
+            style={{
+              padding: "16px 18px",
+              borderRadius: "var(--radius-md)",
+              background: "#fff4e5",
+              border: "1px solid #f0c36d",
+              color: "#6b4300",
+              marginBottom: 18,
+              fontSize: "0.94rem",
+            }}
+          >
+            <strong style={{ display: "block", marginBottom: 6 }}>
+              No se pudieron generar las ilustraciones con IA
+            </strong>
+            <p style={{ marginBottom: 12 }}>{imageQuotaWarning}</p>
+            {createdDraftStoryId && (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={async () => {
+                    setGeneratingStory(true);
+                    const pageNums = customPages.map((_, i) => i + 1);
+                    const ok = await generateImagesForStory(createdDraftStoryId, pageNums);
+                    if (ok) {
+                      router.push(`/cuento/${createdDraftStoryId}`);
+                    }
+                  }}
+                >
+                  <Sparkles size={15} /> Reintentar generación de imágenes
+                </button>
+                <Link
+                  href={`/cuento/${createdDraftStoryId}`}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Abrir borrador del cuento de todas formas
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
@@ -522,18 +664,24 @@ export default function CrearCuentoPage() {
               4. Guion del cuento
             </h2>
             <p style={{ color: "var(--ink-muted)", marginBottom: 18 }}>
-              Puedes introducir tu propio guion página a página o escribir una idea para que la
-              IA redacte el borrador.
+              Pega o sube un guion ya preparado, escríbelo página a página, o escribe una idea para que la IA lo redacte.
             </p>
 
             {/* Selector de modo de guion */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
               <button
                 type="button"
+                className={`btn btn-sm ${scriptMode === "import" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setScriptMode("import")}
+              >
+                <FileText size={15} /> Subir o pegar guion preparado
+              </button>
+              <button
+                type="button"
                 className={`btn btn-sm ${scriptMode === "custom" ? "btn-primary" : "btn-secondary"}`}
                 onClick={() => setScriptMode("custom")}
               >
-                Escribir mi propio guion página a página
+                Editar página a página ({customPages.length})
               </button>
               <button
                 type="button"
@@ -543,6 +691,21 @@ export default function CrearCuentoPage() {
                 Generar guion desde una idea
               </button>
             </div>
+
+            {importNotice && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: "var(--radius-sm)",
+                  background: "#e7f5ec",
+                  color: "#1b5e34",
+                  marginBottom: 16,
+                  fontSize: "0.9rem",
+                }}
+              >
+                {importNotice}
+              </div>
+            )}
 
             <div className="form-grid" style={{ marginBottom: 16 }}>
               <div className="field">
@@ -567,7 +730,63 @@ export default function CrearCuentoPage() {
               </div>
             </div>
 
-            {scriptMode === "custom" ? (
+            {scriptMode === "import" ? (
+              <div
+                style={{
+                  padding: 20,
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--bg-cream)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <strong>Pega tu guion completo o sube un archivo (.txt / .md)</strong>
+                    <p style={{ color: "var(--ink-muted)", fontSize: "0.86rem", marginTop: 2 }}>
+                      Detecta automáticamente secciones como <code>Azala:</code>, <code>1. Irudia:</code>,{" "}
+                      <code>Irudiaren deskribapena:</code>, <code>Giroa:</code>, <code>Testu laburra:</code> (o en español/inglés).
+                    </p>
+                  </div>
+                  <label className="btn btn-secondary btn-sm" htmlFor="script-file-upload" style={{ cursor: "pointer" }}>
+                    <Upload size={15} /> Subir archivo .txt / .md
+                    <input
+                      id="script-file-upload"
+                      type="file"
+                      accept=".txt,.md,.text"
+                      style={{ display: "none" }}
+                      onChange={handleScriptFileUpload}
+                    />
+                  </label>
+                </div>
+
+                <textarea
+                  rows={12}
+                  className="textarea"
+                  value={rawScriptText}
+                  onChange={(e) => setRawScriptText(e.target.value)}
+                  placeholder={`"LUKAS ETA OLENTZEROREN GURDI MAGIKOA"\nAzala:\nIrudia: ...\nTestua: ...\n\n1. Irudia: Lukas basozain alaia\nIrudiaren deskribapena: ...\nGiroa: ...\nTestu laburra: ...`}
+                />
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="btn btn-forest btn-sm"
+                    onClick={handleParsePreparedScript}
+                  >
+                    <Check size={15} /> Analizar y revisar páginas antes de ilustrar
+                  </button>
+                </div>
+              </div>
+            ) : scriptMode === "custom" ? (
               <div>
                 {customPages.map((p, idx) => (
                   <div

@@ -47,6 +47,7 @@ export async function PATCH(
   }
 
   let warning: string | undefined;
+  let imageMode: "ai" | "demo" | undefined;
 
   if (typeof body.pageNumber === "number") {
     const targetPage = story.pages.find((p) => p.pageNumber === body.pageNumber);
@@ -64,12 +65,19 @@ export async function PATCH(
         });
         targetPage.imageUrl = regen.imageUrl;
         warning = regen.warning;
+        imageMode = regen.mode;
+        if (regen.mode === "ai") {
+          story.mode = "ai";
+          delete story.aiWarning;
+        } else if (regen.warning) {
+          story.aiWarning = regen.warning;
+        }
       }
     }
   }
 
   saveStory(story);
-  return NextResponse.json({ story, warning });
+  return NextResponse.json({ story, warning, imageMode });
 }
 
 export async function DELETE(

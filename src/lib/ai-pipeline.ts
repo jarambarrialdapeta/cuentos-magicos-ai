@@ -137,6 +137,69 @@ async function callGeminiImage(params: {
   return { imageUrl: null, error: "No se pudo generar la imagen con Gemini." };
 }
 
+async function callFalImage(params: {
+  falKey: string;
+  prompt: string;
+  referenceImages?: string[];
+}): Promise<{ imageUrl: string | null; error?: string }> {
+  try {
+    const validRefs = (params.referenceImages || [])
+      .map((r) => resolveImageAsDataUrl(r))
+      .filter((x): x is { mimeType: string; data: string } => Boolean(x))
+      .slice(0, 6)
+      .map((x) => `data:${x.mimeType};base64,${x.data}`);
+
+    const endpoint =
+      validRefs.length > 0
+        ? "https://fal.run/fal-ai/nano-banana-2/edit"
+        : "https://fal.run/fal-ai/nano-banana-2";
+
+    const payload =
+      validRefs.length > 0
+        ? { prompt: params.prompt, image_urls: validRefs }
+        : { prompt: params.prompt };
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Key ${params.falKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(35000),
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errTxt = await res.text();
+      return { imageUrl: null, error: `Error Fal.ai (${res.status}): ${errTxt.slice(0, 140)}` };
+    }
+
+    const json = (await res.json()) as {
+      images?: Array<{ url?: string }>;
+      image?: { url?: string };
+    };
+    const imgUrl = json.images?.[0]?.url || json.image?.url;
+    if (!imgUrl) {
+      return { imageUrl: null, error: "Fal.ai no devolvió ninguna imagen." };
+    }
+
+    // Descargar y convertir a data URL para que funcione offline y en PDF/impresión
+    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(15000) });
+    if (imgRes.ok) {
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      const mime = imgRes.headers.get("content-type") || "image/jpeg";
+      return { imageUrl: `data:${mime};base64,${buf.toString("base64")}` };
+    }
+
+    return { imageUrl: imgUrl };
+  } catch (err) {
+    return {
+      imageUrl: null,
+      error: err instanceof Error ? err.message : "Error conectando con Fal.ai",
+    };
+  }
+}
+
 export async function generateBaseCharacter(params: {
   name: string;
   ageOrNote: string;
@@ -145,14 +208,15 @@ export async function generateBaseCharacter(params: {
 }): Promise<GenerateCharacterResult> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const geminiKey = process.env.GEMINI_API_KEY;
+  const falKey = process.env.FAL_KEY;
   let warning: string | undefined;
+
+  const prompt = params.photoDataUrl
+    ? `Transform the person in this reference photo into a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}). Keep their exact facial features, hair and likeness, centered upper body, warm friendly expression, ${style.promptModifier}.`
+    : `Create a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}), centered upper body, warm friendly expression, ${style.promptModifier}.`;
 
   if (geminiKey) {
     try {
-      const prompt = params.photoDataUrl
-        ? `Transform the person in this reference photo into a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}). Keep their exact facial features, hair and likeness, centered upper body, warm friendly expression, ${style.promptModifier}.`
-        : `Create a clean children's storybook character portrait sheet of ${params.name} (${params.ageOrNote || "protagonist"}), centered upper body, warm friendly expression, ${style.promptModifier}.`;
-
       const { imageUrl, error } = await callGeminiImage({
         apiKey: geminiKey,
         prompt,
@@ -170,6 +234,22 @@ export async function generateBaseCharacter(params: {
     } catch (err) {
       warning = err instanceof Error ? err.message : "Error conectando con Gemini";
     }
+  }
+
+  if (falKey) {
+    const { imageUrl, error } = await callFalImage({
+      falKey,
+      prompt,
+      referenceImages: params.photoDataUrl ? [params.photoDataUrl] : [],
+    });
+    if (imageUrl) {
+      return {
+        illustrationUrl: imageUrl,
+        mode: "ai",
+        providerInfo: "Fal.ai (nano-banana-2)",
+      };
+    }
+    warning = error || warning;
   }
 
   return {
@@ -299,15 +379,15 @@ export async function generateSingleSceneImage(params: {
 }): Promise<{ imageUrl: string; mode: "ai" | "demo"; warning?: string }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
   const geminiKey = process.env.GEMINI_API_KEY;
+  const falKey = process.env.FAL_KEY;
 
-  // Priorizar foto real o retrato IA (data:) antes que rutas de ejemplo
-  const refImages = params.characters
-    .map((c) => {
-      if (c.baseIllustrationUrl?.startsWith("data:")) return c.baseIllustrationUrl;
-      if (c.photoDataUrl?.startsWith("data:")) return c.photoDataUrl;
-      return c.baseIllustrationUrl;
-    })
-    .filter((u): u is string => Boolean(u));
+  // Recoger fotos reales y retratos IA de todos los personajes seleccionados (sin duplicados)
+  const refSet = new Set<string>();
+  for (const c of params.characters) {
+    if (c.baseIllustrationUrl) refSet.add(c.baseIllustrationUrl);
+    if (c.photoDataUrl) refSet.add(c.photoDataUrl);
+  }
+  const refImages = Array.from(refSet).slice(0, 6);
 
   const charDetails = params.characters
     .map((c) => `${c.name}: ${c.ageOrNote || c.role}`)
@@ -318,12 +398,14 @@ export async function generateSingleSceneImage(params: {
     params.characters[0]?.baseIllustrationUrl ||
     style.previewImage;
 
-  if (geminiKey) {
-    const prompt =
-      refImages.length > 0
-        ? `Keep the exact same character appearance, face, hair, and clothing from the reference image(s). Characters: ${charDetails}. Place them in this storybook scene: ${params.scenePrompt}. Style: ${style.promptModifier}`
-        : `Children's storybook illustration with characters (${charDetails}). Scene: ${params.scenePrompt}. Style: ${style.promptModifier}`;
+  const prompt =
+    refImages.length > 0
+      ? `Keep the exact same character appearance, face, hair, and clothing from the reference image(s). Characters: ${charDetails}. Place them in this storybook scene: ${params.scenePrompt}. Style: ${style.promptModifier}`
+      : `Children's storybook illustration with characters (${charDetails}). Scene: ${params.scenePrompt}. Style: ${style.promptModifier}`;
 
+  let lastWarning: string | undefined;
+
+  if (geminiKey) {
     const { imageUrl, error } = await callGeminiImage({
       apiKey: geminiKey,
       prompt,
@@ -333,16 +415,27 @@ export async function generateSingleSceneImage(params: {
     if (imageUrl) {
       return { imageUrl, mode: "ai" };
     }
-    return {
-      imageUrl: consistentFallback,
-      mode: "demo",
-      warning: error,
-    };
+    lastWarning = error;
+  }
+
+  if (falKey) {
+    const { imageUrl, error } = await callFalImage({
+      falKey,
+      prompt,
+      referenceImages: refImages,
+    });
+    if (imageUrl) {
+      return { imageUrl, mode: "ai" };
+    }
+    lastWarning = error || lastWarning;
   }
 
   return {
     imageUrl: consistentFallback,
     mode: "demo",
+    warning:
+      lastWarning ||
+      "No hay ningún proveedor de imágenes IA activo (configura facturación en GEMINI_API_KEY o añade FAL_KEY en .env.local).",
   };
 }
 
