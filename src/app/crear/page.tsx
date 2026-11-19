@@ -72,6 +72,17 @@ export default function CrearCuentoPage() {
   const [imageQuotaWarning, setImageQuotaWarning] = useState<string | null>(null);
   const [createdDraftStoryId, setCreatedDraftStoryId] = useState<string | null>(null);
 
+  const [showKeySettings, setShowKeySettings] = useState(false);
+  const [geminiInput, setGeminiInput] = useState("");
+  const [falInput, setFalInput] = useState("");
+  const [keyStatus, setKeyStatus] = useState<{
+    hasGeminiKey: boolean;
+    hasFalKey: boolean;
+    geminiPreview: string | null;
+    falPreview: string | null;
+  } | null>(null);
+  const [savingKeys, setSavingKeys] = useState(false);
+
   useEffect(() => {
     fetch("/api/characters")
       .then((r) => r.json())
@@ -79,7 +90,40 @@ export default function CrearCuentoPage() {
         setSavedCharacters(data.characters || []);
       })
       .catch(() => {});
+
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setKeyStatus(data);
+        if (!data.hasGeminiKey && !data.hasFalKey) {
+          setShowKeySettings(true);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSaveApiKeys = async () => {
+    setSavingKeys(true);
+    try {
+      const payload: { geminiApiKey?: string; falApiKey?: string } = {};
+      if (geminiInput.trim()) payload.geminiApiKey = geminiInput.trim();
+      if (falInput.trim()) payload.falApiKey = falInput.trim();
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKeyStatus(data);
+        setGeminiInput("");
+        setFalInput("");
+        setShowKeySettings(false);
+      }
+    } finally {
+      setSavingKeys(false);
+    }
+  };
 
   const toggleSavedCharacter = (c: CharacterProfile) => {
     setSelectedCharacters((prev) => {
@@ -345,14 +389,98 @@ export default function CrearCuentoPage() {
 
   return (
     <div className="container wizard-shell">
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", marginBottom: 8 }}>
-          Crear un nuevo cuento
-        </h1>
-        <p style={{ color: "var(--ink-muted)" }}>
-          Elige tus personajes, selecciona el estilo y mete tu propio guion o una idea.
-        </p>
+      <div
+        style={{
+          marginBottom: 24,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", marginBottom: 8 }}>
+            Crear un nuevo cuento
+          </h1>
+          <p style={{ color: "var(--ink-muted)" }}>
+            Elige tus personajes, selecciona el estilo y mete tu propio guion o una idea.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowKeySettings((v) => !v)}
+        >
+          {keyStatus?.hasGeminiKey || keyStatus?.hasFalKey
+            ? `Claves IA activas (${[
+                keyStatus.hasGeminiKey ? `Gemini ${keyStatus.geminiPreview || ""}` : "",
+                keyStatus.hasFalKey ? `Fal ${keyStatus.falPreview || ""}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")})`
+            : "Configurar clave IA (Gemini / Fal)"}
+        </button>
       </div>
+
+      {showKeySettings && (
+        <div
+          style={{
+            padding: 18,
+            borderRadius: "var(--radius-md)",
+            background: "var(--bg-cream)",
+            border: "1px solid var(--border)",
+            marginBottom: 20,
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 6 }}>
+            Configurar claves de IA (se guardan localmente en tu equipo)
+          </strong>
+          <p style={{ color: "var(--ink-muted)", fontSize: "0.88rem", marginBottom: 12 }}>
+            Para generar ilustraciones necesitas una clave de <strong>Gemini con facturación activa</strong> en Google AI Studio o una clave de <strong>Fal.ai</strong>.
+          </p>
+          <div className="form-grid" style={{ marginBottom: 12 }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>GEMINI_API_KEY {keyStatus?.hasGeminiKey ? `(actual: ${keyStatus.geminiPreview})` : ""}</label>
+              <input
+                type="password"
+                className="input"
+                placeholder="AIzaSy..."
+                value={geminiInput}
+                onChange={(e) => setGeminiInput(e.target.value)}
+              />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>FAL_KEY (opcional) {keyStatus?.hasFalKey ? `(actual: ${keyStatus.falPreview})` : ""}</label>
+              <input
+                type="password"
+                className="input"
+                placeholder="fal_..."
+                value={falInput}
+                onChange={(e) => setFalInput(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              className="btn btn-forest btn-sm"
+              disabled={savingKeys || (!geminiInput.trim() && !falInput.trim())}
+              onClick={handleSaveApiKeys}
+            >
+              {savingKeys ? "Guardando..." : "Guardar claves"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowKeySettings(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stepper */}
       <div className="stepper" role="tablist">
@@ -412,30 +540,39 @@ export default function CrearCuentoPage() {
               No se pudieron generar las ilustraciones con IA
             </strong>
             <p style={{ marginBottom: 12 }}>{imageQuotaWarning}</p>
-            {createdDraftStoryId && (
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={async () => {
-                    setGeneratingStory(true);
-                    const pageNums = customPages.map((_, i) => i + 1);
-                    const ok = await generateImagesForStory(createdDraftStoryId, pageNums);
-                    if (ok) {
-                      router.push(`/cuento/${createdDraftStoryId}`);
-                    }
-                  }}
-                >
-                  <Sparkles size={15} /> Reintentar generación de imágenes
-                </button>
-                <Link
-                  href={`/cuento/${createdDraftStoryId}`}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Abrir borrador del cuento de todas formas
-                </Link>
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowKeySettings(true)}
+              >
+                Configurar clave IA aquí
+              </button>
+              {createdDraftStoryId && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={async () => {
+                      setGeneratingStory(true);
+                      const pageNums = customPages.map((_, i) => i + 1);
+                      const ok = await generateImagesForStory(createdDraftStoryId, pageNums);
+                      if (ok) {
+                        router.push(`/cuento/${createdDraftStoryId}`);
+                      }
+                    }}
+                  >
+                    <Sparkles size={15} /> Reintentar generación de imágenes
+                  </button>
+                  <Link
+                    href={`/cuento/${createdDraftStoryId}`}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Abrir borrador del cuento de todas formas
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         )}
 

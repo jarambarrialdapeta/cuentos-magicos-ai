@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { BOOK_FORMATS, ILLUSTRATION_STYLES } from "./catalog";
+import { getEffectiveApiKeys } from "./settings";
 import {
   BookFormat,
   CharacterInput,
@@ -207,8 +208,7 @@ export async function generateBaseCharacter(params: {
   photoDataUrl?: string;
 }): Promise<GenerateCharacterResult> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const falKey = process.env.FAL_KEY;
+  const { geminiKey, falKey } = getEffectiveApiKeys();
   let warning: string | undefined;
 
   const prompt = params.photoDataUrl
@@ -280,7 +280,7 @@ export async function generateStoryScript(params: {
   const pageCount = params.requestedPages || format.defaultPages;
   const mainChar = params.characters[0];
   const companion = params.characters[1];
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const { geminiKey } = getEffectiveApiKeys();
   const langLabel = LANGUAGE_LABELS[params.language] || "español";
   let warning: string | undefined;
 
@@ -378,8 +378,7 @@ export async function generateSingleSceneImage(params: {
   fallbackIndex?: number;
 }): Promise<{ imageUrl: string; mode: "ai" | "demo"; warning?: string }> {
   const style = ILLUSTRATION_STYLES.find((s) => s.id === params.styleId) ?? ILLUSTRATION_STYLES[0];
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const falKey = process.env.FAL_KEY;
+  const { geminiKey, falKey } = getEffectiveApiKeys();
 
   // Recoger fotos reales y retratos IA de todos los personajes seleccionados (sin duplicados)
   const refSet = new Set<string>();
